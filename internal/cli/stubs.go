@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
+	"github.com/toledompm/top/internal/doctor"
 	"github.com/toledompm/top/internal/domain"
+	"github.com/toledompm/top/internal/recover"
 )
 
 // Every command from the docs/contracts/cli.md table is defined here as a
@@ -32,16 +35,43 @@ func newVersionCmd(c *cctx) *cobra.Command {
 	}
 }
 
-// newDoctorCmd — read-only stub (installer phase 0 in M2).
+// newDoctorCmd — real (T-203): read-only host preflight, installer
+// phase 0. Runs internal/doctor with TOP's config (dataDir + reserved
+// namespaces) and maps: fails → exit 1 (diagnose-findings row in
+// docs/contracts/cli.md), warn/info/ok → 0; --skip-ports opts out of
+// the 80/443 bind probe.
 func newDoctorCmd(c *cctx) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check host preconditions (pre-install environment check)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return c.notImpl(cmd, false)
+			rep := doctor.Run(cmd.Context(), doctor.Options{
+				DataDir:            c.cfg.DataDir,
+				ReservedNamespaces: c.cfg.Namespaces.Reserved,
+				SkipPorts:          flagBool(cmd, "skip-ports"),
+			})
+			// text: the full human report (findings + hints, ADR-0009);
+			// json: the versioned envelope carrying the payload.
+			if c.format == FormatJSON {
+				if err := c.emitOk(cmd, rep.Summary(), rep.EnvelopeData()); err != nil {
+					return err
+				}
+			} else if err := rep.RenderText(c.out); err != nil {
+				return &ExitError{Code: ExitFailed, Err: err}
+			}
+			if !rep.OK() {
+				return &ExitError{
+					Code: ExitDrift,
+					Err:  errors.New("doctor: host preconditions unsatisfied"),
+				}
+			}
+			return nil
 		},
 	}
+	cmd.Flags().Bool("skip-ports", false,
+		"skip the read-only 80/443 availability probe (bind-close check)")
+	return cmd
 }
 
 // newInstallCmd — mutating, confirm-gated stub.
@@ -243,10 +273,18 @@ func newBackupCmd(c *cctx) *cobra.Command {
 	return backup
 }
 
-// newRecoverCmd — diagnose (read-only) plus restart/redeploy/restore
-// (mutating, gated; these work with the controller down, ADR-0005).
+// newRecoverCmd — the independent recovery path (ADR-0005): diagnose
+// fully real (M2 slice of docs/contracts/backup-recovery.md's Recovery
+// section); restart/redeploy real-but-minimal; restore scaffold-only
+// (lands M5/T-503 behind the ADR-0007 safeguards). All broadcast through
+// internal/recover with Options.Runner as the process seam — the real
+// host unless a test injected a fake. Findings render in the doctor
+// vocabulary (internal/doctor's Report shape, reused); exit code:
+// diagnose fails → 1 (the contract's "drift/diagnose-findings" space),
+// failed restart/redeploy/restore → 3 (operation failed), store
+// unavailability during a mutation → 4.
 func newRecoverCmd(c *cctx) *cobra.Command {
-	recover := &cobra.Command{
+	recoverCmd := &cobra.Command{
 		Use:   "recover",
 		Short: "Controllerless diagnosis and repair (works with controller down, ADR-0005)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -256,37 +294,129 @@ func newRecoverCmd(c *cctx) *cobra.Command {
 
 	diagnose := &cobra.Command{
 		Use:   "diagnose",
-		Short: "Report state of dokku, store, secrets, and controller",
+		Short: "Report state of dokku, store, secrets, and controller (read-only)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return c.notImpl(cmd, false)
-		},
-	}
-	recover.AddCommand(diagnose)
-
-	mutatingShort := [][2]string{
-		{"restart", "Restart the TOP controller without a full deploy (confirm-gated)"},
-		{"redeploy", "Force a redeploy of services from the last known-good state (confirm-gated)"},
-		{"restore", "Restore TOP's metadata from a backup (confirm-gated)"},
-	}
-	for _, pair := range mutatingShort {
-		verb, short := pair[0], pair[1]
-		sub := &cobra.Command{
-			Use:   verb,
-			Short: short,
-			Args:  cobra.NoArgs,
-			RunE: func(cmd *cobra.Command, _ []string) error {
-				if err := c.requireConfirm(cmd, "recover "+verb+" on this host"); err != nil {
+			rep := recover.Diagnose(cmd.Context(), c.recoverOpts())
+			if c.format == FormatJSON {
+				if err := c.emitOk(cmd, recover.Summary(rep), rep.EnvelopeData()); err != nil {
 					return err
 				}
-				return c.notImpl(cmd, true)
-			},
-		}
-		addConfirmFlag(sub)
-		sub.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
-		recover.AddCommand(sub)
+			} else if err := recover.RenderText(c.out, rep); err != nil {
+				return &ExitError{Code: ExitFailed, Err: err}
+			}
+			if !rep.OK() {
+				return &ExitError{
+					Code: ExitDrift,
+					Err:  errors.New("recover diagnose: failures found (see per-finding suggested commands above)"),
+				}
+			}
+			return nil
+		},
 	}
-	return recover
+	recoverCmd.AddCommand(diagnose)
+
+	restart := &cobra.Command{
+		Use:   "restart",
+		Short: "Restart the TOP controller without a full deploy (confirm-gated)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := c.requireConfirm(cmd, "restarting the TOP controller"); err != nil {
+				return err
+			}
+			return c.runRecoverAction(cmd, "restart", func(o recover.Options) (*recover.Result, error) {
+				return recover.Restart(cmd.Context(), o, flagBool(cmd, "dry-run"))
+			})
+		},
+	}
+	addConfirmFlag(restart)
+	restart.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
+
+	redeploy := &cobra.Command{
+		Use:   "redeploy",
+		Short: "Redeploy the controller from last-known-good or the pinned image (confirm-gated)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if rev := flagString(cmd, "revision"); rev != "" {
+				if err := domain.ValidRevision(rev); err != nil {
+					return c.usageErr(cmd, "--revision: "+err.Error())
+				}
+			}
+			if err := c.requireConfirm(cmd, "redeploying the TOP controller via Dokku directly"); err != nil {
+				return err
+			}
+			return c.runRecoverAction(cmd, "redeploy", func(o recover.Options) (*recover.Result, error) {
+				return recover.Redeploy(cmd.Context(), o, flagString(cmd, "revision"), flagBool(cmd, "dry-run"))
+			})
+		},
+	}
+	addConfirmFlag(redeploy)
+	redeploy.Flags().String("revision", "", "redeploy a specific git commit sha instead of the store's last-known-good (or the pinned bootstrap image)")
+	redeploy.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
+
+	restore := &cobra.Command{
+		Use:   "restore",
+		Short: "Restore TOP's metadata from a backup (confirm-gated; lands M5)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := c.requireConfirm(cmd, "restoring TOP's metadata from a backup"); err != nil {
+				return err
+			}
+			if err := recover.Restore(cmd.Context(), c.recoverOpts(), flagString(cmd, "backup")); err != nil {
+				if errors.Is(err, recover.ErrRestoreDeferred) {
+					return c.emitErrCode(cmd, "not-implemented", ExitFailed, err.Error())
+				}
+				return c.emitErrCode(cmd, "failed", ExitFailed, err.Error())
+			}
+			return nil
+		},
+	}
+	addConfirmFlag(restore)
+	restore.Flags().String("backup", "", "backup file to restore (required once restore lands in M5)")
+	restore.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
+
+	recoverCmd.AddCommand(restart, redeploy, restore)
+	return recoverCmd
+}
+
+// runRecoverAction renders a restart/redeploy result (success envelope
+// carrying the runbook data, or a failed error envelope with the exact
+// retry command).
+func (c *cctx) runRecoverAction(cmd *cobra.Command, verb string, do func(recover.Options) (*recover.Result, error)) error {
+	res, err := do(c.recoverOpts())
+	if err != nil {
+		return c.emitErrCode(cmd, "failed", ExitFailed, fmt.Sprintf("%s: %v (touches only the Dokku CLI, the filesystem, and the state file — the same independence as diagnose)", verb, err))
+	}
+	msg := fmt.Sprintf("%s %s: done via %s", verb, res.App, res.Source)
+	if c.format == FormatJSON {
+		return c.emitOk(cmd, msg, res.DataMap())
+	}
+	if err := recover.RenderResultText(c.out, verb, res); err != nil {
+		return &ExitError{Code: ExitFailed, Err: err}
+	}
+	return nil
+}
+
+// recoverOpts builds internal/recover.Options from the validated config
+// + streams context (the doctor wiring's mirror image).
+func (c *cctx) recoverOpts() recover.Options {
+	return recover.Options{
+		Runner:     c.runner,
+		DataDir:    c.cfg.DataDir,
+		GitURL:     c.cfg.Git.URL,
+		GitBranch:  c.cfg.Git.Branch,
+		ConfigFile: c.cfgPathOrCanonical(),
+	}
+}
+
+// cfgPathOrCanonical resolves the config file diagnose validates: the
+// operator's --config path when given, else the canonical
+// <dataDir>/top-config.yaml (internal/config README's load order).
+func (c *cctx) cfgPathOrCanonical() string {
+	if c.cfgPath != "" {
+		return c.cfgPath
+	}
+	return c.cfg.DataDir + "/top-config.yaml"
 }
 
 // newUninstallCmd — destructive, gated stub. Tiered per-flag

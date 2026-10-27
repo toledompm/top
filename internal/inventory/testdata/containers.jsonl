@@ -1,0 +1,4 @@
+{"ID":"d805104342d4","Names":"/core-top-controller","Image":"ghcr.io.example/top-controller:0.1.0","State":"running","Labels":"top.dev/managed=true,top.dev/namespace=core,top.dev/service=controller,com.dokku.app-name="}
+{"ID":"aa11bb22cc33","Names":"/default-website","Image":"dokku/default-website:latest","State":"running","Labels":"com.dokku.app-name=default-website"}
+{"ID":"0f0e0d0c0b0a","Names":"/redis-cache","Image":"redis:7","State":"running","Labels":""}
+{"ID":"deadbeef0001","Names":"/core-legacy-worker","Image":"ghcr.io.example/old:2","State":"exited","Labels":""}

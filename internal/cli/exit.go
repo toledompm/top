@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/toledompm/top/internal/exec"
 )
 
 // Process exit codes (docs/contracts/cli.md): 0 ok; 1 drift/diagnose
 // findings (scripting); 2 usage; 3 operation failed; 4
-// backend/store-unavailable. Codes 1 and 4 have no stub producer — they
-// appear when M2/M3 commands carry real drift findings and real backend
-// liveness — but the constants exist now so the contract has one source
-// of truth.
+// backend/store-unavailable. Code 1 is produced by real commands with
+// findings: `topctl diff` drift and `topctl doctor` failing checks
+// (T-203). Code 4 has no producer yet — it appears when M3 commands
+// carry real backend liveness — but the constants exist now so the
+// contract has one source of truth.
 const (
 	ExitOK          = 0
 	ExitDrift       = 1
@@ -63,6 +66,13 @@ type Options struct {
 	// StdinIsTTY forces the confirm prompt's TTY answer (tests). Nil
 	// means: detect from Stdin (os.File char-device check).
 	StdinIsTTY *bool
+	// Runner overrides the process runner for host-touching commands
+	// (real bodies from M2 onward: recover; nil → exec.NewFastExec(),
+	// i.e. FastExec runs the real host). Tests inject exectest's
+	// FakeRunner so tests never touch the real host; the read-only
+	// doctor-style commands may, and do, exercise the real machine
+	// (documented invariant: tests never run mutating verbs for real).
+	Runner exec.Runner
 }
 
 // ExitError carries a process exit code through RunE into Execute.

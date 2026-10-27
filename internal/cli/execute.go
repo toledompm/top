@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/toledompm/top/internal/config"
+	"github.com/toledompm/top/internal/exec"
 )
 
 // Execute builds the topctl root command, runs argv, and maps the result
@@ -45,7 +46,8 @@ func Execute(opts Options, args []string) int {
 }
 
 // cctx is the per-run context handed to every command closure: resolved
-// streams, output format, and the validated config from internal/config.
+// streams, output format, the validated config from internal/config,
+// and the process runner (Options.Runner or exec.NewFastExec()).
 type cctx struct {
 	opts      Options
 	out, errW io.Writer
@@ -53,6 +55,7 @@ type cctx struct {
 	cfg       config.Config
 	cfgPath   string
 	format    Format
+	runner    exec.Runner
 }
 
 // newContext seeds the per-run context from Options (nil → std streams).
@@ -69,7 +72,7 @@ func newContext(opts Options) *cctx {
 	if stdin == nil {
 		stdin = os.Stdin
 	}
-	return &cctx{opts: opts, out: out, errW: errW, stdin: stdin}
+	return &cctx{opts: opts, out: out, errW: errW, stdin: stdin, runner: opts.Runner}
 }
 
 // emitOk renders a success envelope and returns nil (exit 0).

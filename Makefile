@@ -9,7 +9,7 @@ help:
 	@echo "TOP developer targets (CI runs the same commands):"
 	@echo "  make build           build ./cmd/topctl -> ./topctl"
 	@echo "  make test            tier-1 unit tests (go test ./... -race)"
-	@echo "  make test-shim       tier-2 dokku-shim integration (toptests tag)"
+	@echo "  make test-e2e-backend  tier-3 REAL-Dokku adapter tests (TOP_E2E=1, disposable container, ~1GB first pull)"
 	@echo "  make test-conformance  T-111 contract conformance probes (tag-gated)"
 	@echo "  make vet             go vet ./..."
 	@echo "  make fmt             gofumpt -l -w ."
@@ -17,7 +17,7 @@ help:
 	@echo "  make laws            bend law gate: LAWS/PROOF check + bridge differential"
 	@echo "  make hygiene         ADR-0014 public/private grep"
 
-.PHONY: build test test-conformance vet fmt lint hygiene test-shim laws clean help
+.PHONY: build test test-conformance vet fmt lint hygiene test-shim test-e2e-backend laws clean help
 
 build:
 	CGO_ENABLED=0 $(GO) build -o $(BINARY) ./cmd/topctl
@@ -51,6 +51,13 @@ lint:
 
 hygiene:
 	./test/hygiene.sh
+
+# T-201/T-202 tier 3 (ADR-0012): REAL Dokku in a disposable container
+# (dokku/dokku via testcontainers-go + docker.sock). Opt-in, never wired
+# into `test` or CI; see internal/backend/dokku/e2etest (cost note: first
+# run pulls ~1 GB). Never pointed at a host Dokku.
+test-e2e-backend:
+	TOP_E2E=1 GOTOOLCHAIN=local $(GO) test -tags e2e ./internal/backend/dokku/e2etest -v -count=1 -timeout 30m
 
 # T-113 (docs/adr/0015-bend-laws.md, prototype): bend's proof gate over
 # laws/LAWS.bend + the Go differential bridge (test/bridge). Skips

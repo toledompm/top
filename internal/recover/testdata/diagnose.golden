@@ -1,0 +1,19 @@
+recover diagnose found 2 failure(s), 2 warning(s) — every fix below is a suggested command; recovery output doubles as a runbook
+  ok   [dokku/health]           dokku healthy: dokku 0.38.31 healthy (version ≥ 0.38 and apps:list ok; 2 app(s))
+  ok   [controller/failed-deploys] failed deploy log: `dokku logs:failed core-top-controller` is empty: no failed deploy recorded
+  fail [controller/state]       controller running state: core-top-controller is deployed but not running (crashed or stopped)
+        → suggested: `topctl recover restart` — restarts core-top-controller and waits bounded (contract cap 3m) for ps:reported health
+  info [controller/log-tail]    controller recent logs (last 200): last log line: top-controller[1]: cannot open TMPDIR/top.db: disk I/O error
+        → suggested: visible above; rerun diagnose after the fix to confirm the tail stops implicating the same cause. Full: `dokku logs core-top-controller --num 200`
+  warn [store/integrity]        state store integrity (v1): TMPDIR/top.db integrity ok (newest op 41h0m0s old) — BUT stale: no reconcile has recorded since
+        → suggested: an outage-sized gap. expected while the controller is down; if it stays stale after restart/redeploy, that is the next thread to pull (`topctl recover diagnose` again, then `dokku ps:report core-top-controller`)
+  info [config/missing]         config file TMPDIR/top-config.yaml: TMPDIR/top-config.yaml not found: fresh install assumed (defaults from internal/config; TOP_* env still apply)
+        → suggested: no action needed — an install phase writes the real config; do not hand-create one during recovery
+  warn [perms/top]              dataDir TMPDIR: TMPDIR has mode 755; the ADR-0008 contract is 0700
+        → suggested: `chmod 700 TMPDIR` (diagnose suggests; it never chmods)
+  info [perms/secrets]          secrets directory TMPDIR/secrets: TMPDIR/secrets does not exist (fresh install, not yet provisioned by the installer)
+        → suggested: the installer phases create it at 0700; nothing to fix during a genuinely fresh recovery (an operator may pass here before install)
+  info [perms/git]              git directory TMPDIR/git: TMPDIR/git does not exist (fresh install, not yet provisioned by the installer)
+        → suggested: the installer phases create it at 0700; nothing to fix during a genuinely fresh recovery (an operator may pass here before install)
+  fail [disk/headroom]          disk headroom: only 0 GiB free on TMPDIR: a near-full disk is the most common cause of both a dead controller and a failing SQLite
+        → suggested: free disk space (old Dokku images/logs; NOT TOP's registered backups), then `topctl recover restart` and re-run diagnose to watch integrity recover

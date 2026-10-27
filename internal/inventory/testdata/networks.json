@@ -1,0 +1,3 @@
+{"Name":"bridge","NetworkID":"n1","Scope":"local","Driver":"bridge","Labels":{}}
+{"Name":"core-top-net","NetworkID":"n2","Scope":"local","Driver":"overlay","Labels":{"top.dev/managed":"true","top.dev/namespace":"core"}}
+{"Name":"observability-web-net","NetworkID":"n3","Scope":"local","Driver":"overlay","Labels":"top.dev/managed=true,top.dev/namespace=observability"}

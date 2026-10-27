@@ -26,16 +26,19 @@ ldflags-injected build stamp. `ExitError{Code}` carries the contract exit
 code through `RunE` into `Execute`'s single mapping point:
 
 - read-only stubs (status, diff, history, logs, doctor, backup
-  list/verify, recover diagnose) → **0** with the stub envelope,
-- mutating stubs (install, uninstall, reconcile, deploy, backup create,
-  recover restart/redeploy/restore, controller run) → **3**
+  list/verify) → **0** with the stub envelope. `recover diagnose` left
+  the stub set in M2 — it now renders a real internal/recover report in
+  the doctor vocabulary (exit 0/1 like doctor),
+- mutating stubs (install, uninstall, reconcile, deploy, backup create, controller run) → **3**
   ("operation failed" in the contract code space: the invocation was
   well formed, the operation cannot succeed today; 2 is reserved for the
   caller's mistake),
 - invalid usage/validation → **2** with an error envelope and a
   `--help` hint,
-- ExitDrift (1) and ExitUnreachable (4) have no stub producer; the
-  constants are the contract's single source of truth.
+- ExitDrift (1) now HAS a producer (`topctl doctor` failures and, since
+  M2, `topctl recover diagnose` failures); ExitUnreachable (4) is still
+  contract-reserved. The constants are the contract's single source of
+  truth.
 
 JSON output is always one compact line:
 `{"schemaVersion":1,"command":"status","message":"not implemented: planned M2/M3"}`.
@@ -52,9 +55,10 @@ code `not-implemented` distinguishes it from a real M2-era failure.
 
 ## Confirmation scaffolding
 
-Gated commands (install, uninstall, backup create, recover
-restart/redeploy/restore, plus reconcile when `--prune` or
-`--include-controller` is set) call `cctx.requireConfirm`:
+Gated commands (install, uninstall, backup create, plus reconcile when
+`--prune` or `--include-controller` is set; recover
+restart/redeploy/restore are gated too — real in M2, same knot) call
+`cctx.requireConfirm`:
 
 - `--confirm` → proceed (deterministic path for agents/CI, ADR-0009);
 - stdin is a TTY → interactive `y/N` prompt;

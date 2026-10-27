@@ -44,10 +44,8 @@ func TestExitCodeContract(t *testing.T) {
 		{"diff", []string{"diff"}, ExitOK},
 		{"history", []string{"history", "core/prometheus"}, ExitOK},
 		{"logs", []string{"logs", "prometheus"}, ExitOK},
-		{"doctor", []string{"doctor"}, ExitOK},
 		{"backup-list", []string{"backup", "list"}, ExitOK},
 		{"backup-verify", []string{"backup", "verify"}, ExitOK},
-		{"recover-diagnose", []string{"recover", "diagnose"}, ExitOK},
 		{"version", []string{"version"}, ExitOK},
 
 		// mutating stubs → 3 (invocation is well formed; the gap is the tool)
@@ -56,17 +54,15 @@ func TestExitCodeContract(t *testing.T) {
 		{"reconcile", []string{"reconcile"}, ExitFailed},
 		{"deploy", []string{"deploy", "core/prometheus"}, ExitFailed},
 		{"backup-create-confirmed", []string{"backup", "create", "--confirm"}, ExitFailed},
-		{"recover-restart-confirmed", []string{"recover", "restart", "--confirm"}, ExitFailed},
-		{"recover-redeploy-confirmed", []string{"recover", "redeploy", "--confirm"}, ExitFailed},
-		{"recover-restore-confirmed", []string{"recover", "restore", "--confirm"}, ExitFailed},
+		// recover's four confirmed rows live in recover_test.go — the
+		// bodies are real (M2), pinned against a FakeRunner there.
 		{"controller-run", []string{"controller", "run"}, ExitFailed},
 
 		// confirm gate: gated command without --confirm, non-TTY → 2
 		{"install-no-confirm", []string{"install", "github.com/example/top"}, ExitUsage},
 		{"uninstall-no-confirm", []string{"uninstall"}, ExitUsage},
 		{"backup-create-no-confirm", []string{"backup", "create"}, ExitUsage},
-		{"recover-restart-no-confirm", []string{"recover", "restart"}, ExitUsage},
-		{"recover-restore-no-confirm", []string{"recover", "restore"}, ExitUsage},
+		// recover restart/redeploy/restore no-confirm rows → recover_test.go.
 		{"reconcile-prune-no-confirm", []string{"reconcile", "--prune"}, ExitUsage},
 		{"reconcile-include-controller-no-confirm", []string{"reconcile", "--include-controller"}, ExitUsage},
 
@@ -97,12 +93,14 @@ func TestExitCodeContract(t *testing.T) {
 	}
 }
 
-// TestStubEnvelopesAreVersioned: every successful stub prints the versioned
+// TestStubEnvelopesAreVersioned: every remaining stub prints the versioned
 // envelope with the right command field; -o json output parses and carries
-// schemaVersion=1 + "not implemented" message.
+// schemaVersion=1 + "not implemented" message. (recover diagnose left the
+// stub set in M2 — its envelope contract is in recover_test.go; the
+// untouched stubs keep the exact same discipline.)
 func TestStubEnvelopesAreVersioned(t *testing.T) {
 	t.Parallel()
-	for _, cmd := range []string{"status", "diff", "doctor", "backup list", "recover diagnose"} {
+	for _, cmd := range []string{"status", "diff", "backup list"} {
 		args := strings.Fields(cmd)
 		outS, _, code := runCLI(t, false, "", append(args, "-o", "json")...)
 		if code != ExitOK {
