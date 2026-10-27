@@ -45,6 +45,9 @@ examples/            fictional, committable example configs
 
 ## Conventions
 
+- **License**: MIT (`LICENSE`). Go source files carry an SPDX header:
+  `// SPDX-License-Identifier: MIT` in the file's leading comment block.
+  Copyright holder in `LICENSE` is "toledompm and TOP contributors".
 - ADR format: see `docs/adr/README.md`.
 - Naming: TOP-managed things are prefixed `top-` (apps, volumes, files under
   `/var/lib/top`); namespaces are logical, see ADR-0004.

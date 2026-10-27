@@ -11,7 +11,7 @@ that desired state — like Flux, but for a Dokku box instead of Kubernetes.
 > [`docs/adr/`](docs/adr/README.md) +
 > [`docs/contracts/`](docs/contracts/README.md).
 > Unit (tier-1), fake-exec, and contract-conformance test seams are green;
-> the tier-3 real-Dokku harness lands in M2.
+> the tier-3 real-Dokku harness lands in M2. License: **MIT** (`LICENSE`).
 
 ## What it does
 
