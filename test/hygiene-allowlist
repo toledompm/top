@@ -1,0 +1,37 @@
+# Hygiene allowlist & rationale (companion to test/hygiene.sh)
+#
+# This file documents the exemption rules so a flagged contributor (or agent)
+# knows what passed and why. It is NOT a general-purpose ignore list: add an
+# entry only for a false positive you can explain, and record the reason here.
+
+## Exempt in the script (by rule, not by content)
+#
+# 1. docs/adr/0014-public-local-boundary.md — the policy ADR itself; it quotes
+#    the forbidden patterns in prose.
+# 2. test/hygiene.sh and this file — the enforcement mechanism and its
+#    documentation.
+# 3. Any line containing the word "hygiene" — i.e. discussion about the check.
+#    This keeps changelog/PR text like "hygiene job added" exempt even if it
+#    mentions an IP convention.
+#
+# Rejected exemptions (on purpose):
+# - RFC5737/RFC2606 example ranges (192.0.2.x, 198.51.100.x, 203.0.113.x,
+#   example.com) need no exemption — they are outside the flagged RFC1918/
+#   CGNAT ranges, so fixtures using them simply pass.
+# - "prose explanations inside code" — no; if a tracked file needs a real
+#   private IP it must be generalized, per ADR-0014 §3.
+
+## Known benign patterns
+#
+# - "`top-homelab`-style" — docs (service-spec.md, m4 milestone) use this as an
+#   explicitly fictional label describing the kind of repo users have; no
+#   hosting data accompanies it. The hygiene script exempts this hyphenated
+#   form only; a bare "top-homelab" is still flagged.
+# - Version triples like "0.10.2" or "go1.24" never match because the IP regex
+#   requires three dotted numeric octets bounded by non-digit characters.
+
+## How to add a temporary exemption (and how to retire it)
+#
+# Prefer narrowing the matched *line* (e.g. a prose sentence in a policy doc)
+# over widening the script. If you must exempt content, put it behind a
+# clearly-named variable in the doc and list it here with a retirement date.

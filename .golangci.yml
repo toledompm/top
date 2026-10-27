@@ -1,0 +1,19 @@
+# golangci-lint — deliberately conservative (AGENTS.md rule 5: vet + fmt +
+# a static-analysis baseline; no style rabbit-holes). See Makefile `lint`.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+
+formatters:
+  default: none
+  enable:
+    - gofumpt

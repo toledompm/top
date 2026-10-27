@@ -1,0 +1,34 @@
+# --- Local-only environment (NEVER commit) ---
+# Private host inventory, credentials, local test overrides and diagnostics.
+.local/
+*.local
+.env
+.env.*
+
+# --- Secrets ---
+*.pem
+*.key
+id_rsa*
+*.kubeconfig
+
+# --- Build artifacts ---
+/top
+/top-controller
+/dist/
+/bin/
+*.test
+coverage.out
+coverage.html
+
+# --- OS / editor ---
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# --- Scratch / tmp ---
+/tmp/
+scratch/
+
+# --- go build output ---
+/topctl
