@@ -77,7 +77,7 @@ func TestPlanRendering(t *testing.T) {
 				Kind: PlanUpdate,
 				Changes: []FieldChange{
 					{Path: "revision", From: strPtr("a1b2c3d"), To: strPtr("9f8e7d6")},
-					mustChange(t, NewSecretFieldChange("secretRefs.SMTP_PASSWORD", "+")),
+					mustSecretChange(t, "secretRefs.SMTP_PASSWORD", "+"),
 				},
 			},
 		},
@@ -100,10 +100,11 @@ func TestPlanRendering(t *testing.T) {
 	}
 }
 
-func mustChange(t *testing.T, c FieldChange, err error) FieldChange {
+func mustSecretChange(t *testing.T, path, op string) FieldChange {
 	t.Helper()
+	c, err := NewSecretFieldChange(path, op)
 	if err != nil {
-		t.Fatalf("change: %v", err)
+		t.Fatalf("NewSecretFieldChange(%s, %s): %v", path, op, err)
 	}
 	return c
 }

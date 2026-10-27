@@ -1,5 +1,5 @@
 # Illustrative example from docs/contracts/service-spec.md (fictional values,
-# from a `top-homelab`-style repo).
+# from a platform repo).
 apiVersion: top/v1alpha1
 kind: Service
 metadata:

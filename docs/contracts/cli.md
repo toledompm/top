@@ -21,6 +21,7 @@ Unix process viewer; see ADR-0011), agent-consumable. Global flags:
 | `topctl backup create|list|verify` | mixed | BackupProvider | create is mutating but non-destructive |
 | `topctl recover diagnose|restart|redeploy|restore` | mixed | Recovery | **works with controller down** (ADR-0005) |
 | `topctl uninstall [--purge-data] [--purge-secrets] [--uninstall-dokku] [--dry-run]` | destructive, gated | Installer teardown | tiered confirmations |
+| `topctl secrets set <name> [--overwrite]` / `list` | mixed | secrets.Provider | set reads the value from stdin (never argv/shell history); list manifests names+checksums only (ADR-0008/0013); wired M2 |
 | `topctl controller run` | daemon | Controller loops + HTTP | usually run by Dokku, not by hand |
 | `topctl version` | read-only | — | includes build info + min Dokku version |
 

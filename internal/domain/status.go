@@ -1,5 +1,7 @@
 package domain
 
+import "fmt"
+
 // ServiceStatus is the health/status summary shown by `topctl status` and
 // exported as `top_service_*` metric labels — a stable vocabulary shared by
 // CLI and metrics (ADR-0010, ADR-0011).

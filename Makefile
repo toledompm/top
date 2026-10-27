@@ -5,13 +5,31 @@
 BINARY := topctl
 GO     ?= go
 
-.PHONY: build test vet fmt lint hygiene test-shim clean
+help:
+	@echo "TOP developer targets (CI runs the same commands):"
+	@echo "  make build           build ./cmd/topctl -> ./topctl"
+	@echo "  make test            tier-1 unit tests (go test ./... -race)"
+	@echo "  make test-shim       tier-2 dokku-shim integration (toptests tag)"
+	@echo "  make test-conformance  T-111 contract conformance probes (tag-gated)"
+	@echo "  make vet             go vet ./..."
+	@echo "  make fmt             gofumpt -l -w ."
+	@echo "  make lint            golangci-lint run (skips if not installed)"
+	@echo "  make hygiene         ADR-0014 public/private grep"
+
+.PHONY: build test test-conformance vet fmt lint hygiene test-shim clean help
 
 build:
 	CGO_ENABLED=0 $(GO) build -o $(BINARY) ./cmd/topctl
 
 test:
 	$(GO) test ./... -race -count=1
+
+# T-111 contract conformance harness: compile-level asserts (always built)
+# plus tag-gated behavior probes. Run explicitly — NOT wired into `test` or
+# CI; the T-112 review decides when conformance joins pr CI (recommended
+# post-M2). See conformance_check/README.md.
+test-conformance:
+	GOTOOLCHAIN=local $(GO) test -tags conformance ./conformance_check/... -race -count=1
 
 # Tier 2 (ADR-0012): shim integration tests, guarded by the `toptests` build
 # tag so they stay out of `test` and CI's `go test ./...`. Exercises the

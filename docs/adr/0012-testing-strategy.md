@@ -61,7 +61,10 @@ pass on a fork with zero secrets configured (tiers 1–3 only).
 - **Author's homelab as the CI e2e host** — violates ADR-0014 and makes a
   private host load-bearing for validating product behavior. Rejected.
 
-## Consequences
+## Consequences (amended 2026-10-27 per T-112 review)
+
+- Tier-2 shim suite (`make test-shim`) runs in PR CI as its own job; the
+  conformance harness joins post-M2 when the adapter exists to exercise.
 
 - `test/fakeexec/` and the `dokku` shim land in Milestone 1 with the exec
   package, so all later milestones inherit the seam.
@@ -71,7 +74,5 @@ pass on a fork with zero secrets configured (tiers 1–3 only).
 
 ## Open questions
 
-- Lima vs Multipass for the committed template (proposal: Lima — CNCF,
-  scriptable YAML, good macOS support; Multipass documented as an
-  alternative). Confirm in Milestone 1.
+- Lima vs Multipass: **resolved by owner decision (M0 review answer #5)— Lima.**
 - Tier-3 on macOS CI runners: skip; Linux-only.

@@ -264,7 +264,8 @@ func newRecoverCmd(c *cctx) *cobra.Command {
 	}
 	recover.AddCommand(diagnose)
 
-	mutatingShort := [][2]string{{"restart", "Restart the TOP controller without a full deploy (confirm-gated)"},
+	mutatingShort := [][2]string{
+		{"restart", "Restart the TOP controller without a full deploy (confirm-gated)"},
 		{"redeploy", "Force a redeploy of services from the last known-good state (confirm-gated)"},
 		{"restore", "Restore TOP's metadata from a backup (confirm-gated)"},
 	}

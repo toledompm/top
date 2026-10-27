@@ -44,7 +44,7 @@ semantics and rationale.
 | `spec.restartPolicy` | enum | `always` | maps to dokku ps:restart-policy |
 | `spec.resources.limits.cpu/memory` | string | — | optional; maps to dokku resource plugin |
 
-## Illustrative example (fictional, from `top-homelab`-style repo)
+## Illustrative example (fictional, from a platform repo)
 
 `observability/prometheus.yaml`:
 

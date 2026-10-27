@@ -32,9 +32,15 @@ func TestOperationLifecycleTransitions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			op := mustOp(t, OpReconcile, ActorWebhook, "del-1", "a1b2c3d4e5f6")
+			// reach tt.from through valid transitions only
 			if tt.from != OpPending {
-				if err := op.Next(tt.from); err != nil {
-					t.Fatalf("setup Next(%s): %v", tt.from, err)
+				if err := op.Next(OpRunning); err != nil {
+					t.Fatalf("setup running: %v", err)
+				}
+				if tt.from != OpRunning {
+					if err := op.Next(tt.from); err != nil {
+						t.Fatalf("setup reach(%s): %v", tt.from, err)
+					}
 				}
 			}
 			err := op.Next(tt.to)
@@ -51,6 +57,20 @@ func TestOperationLifecycleTransitions(t *testing.T) {
 				t.Fatalf("state = %s, want %s", op.State, tt.to)
 			}
 		})
+	}
+}
+
+func TestOperationStartFinish(t *testing.T) {
+	t.Parallel()
+	op := mustOp(t, OpDeploy, ActorUser, "", "")
+	if op.IsTerminal() {
+		t.Fatal("fresh op not terminal")
+	}
+	if err := op.Start(); err != nil || op.State != OpRunning {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := op.Next(OpSucceeded); err != nil || !op.IsTerminal() {
+		t.Fatalf("finish: %v", err)
 	}
 }
 
@@ -143,8 +163,8 @@ func TestOperationEnums(t *testing.T) {
 
 func TestInvalidTransitionErrorShape(t *testing.T) {
 	t.Parallel()
-	var target error
 	err := InvalidTransitionError{From: OpSucceeded, To: OpRunning}
+	var target InvalidTransitionError
 	if !errors.As(errors.Join(err, errors.New("wrapped")), &target) {
 		t.Fatal("As(InvalidTransitionError) failed")
 	}

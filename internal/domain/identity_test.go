@@ -20,9 +20,9 @@ func TestAppName(t *testing.T) {
 		{name: "reserved core", ns: "core", svc: "top-controller", want: "core-top-controller"},
 		{name: "observability", ns: "observability", svc: "prometheus", want: "observability-prometheus"},
 		{name: "hyphens", ns: "team-a", svc: "web-1", want: "team-a-web-1"},
-		{name: "exactly 48 chars is ok", ns: "n", svc: strings.Repeat("a", 46), want: "n-" + strings.Repeat("a", 46)},
-		{name: "49 chars total", ns: "nn", svc: strings.Repeat("a", 46), wantErr: ErrInvalid, errMsg: "exceeds"},
-		{name: "way too long", ns: strings.Repeat("a", 50), svc: "web", wantErr: ErrInvalid, errMsg: "exceeds"},
+		{name: "exactly 48 chars is ok", ns: "n", svc: Name(strings.Repeat("a", 46)), want: "n-" + strings.Repeat("a", 46)},
+		{name: "49 chars total", ns: "nn", svc: Name(strings.Repeat("a", 46)), wantErr: ErrInvalid, errMsg: "exceeds"},
+		{name: "way too long", ns: Namespace(strings.Repeat("a", 50)), svc: "web", wantErr: ErrInvalid, errMsg: "max 48"},
 		{name: "upper case namespace", ns: "Team", svc: "web", wantErr: ErrInvalid, errMsg: "must match"},
 		{name: "upper case name", ns: "team", svc: "Web", wantErr: ErrInvalid, errMsg: "must match"},
 		{name: "leading hyphen name", ns: "team", svc: "-web", wantErr: ErrInvalid, errMsg: "must match"},
@@ -166,7 +166,7 @@ func TestValidRevision(t *testing.T) {
 
 func TestServiceRefValidateAndDesiredValidate(t *testing.T) {
 	t.Parallel()
-	bad := Ref(Namespace(strings.Repeat("a", 30)), "web")
+	bad := Ref(Namespace(strings.Repeat("a", 25)), Name(strings.Repeat("b", 30)))
 	if err := bad.Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("long app ref should fail ErrInvalid, got %v", err)
 	}
@@ -242,8 +242,11 @@ func TestRoutingAndRestartPolicyParse(t *testing.T) {
 	if _, err := ParseRestartPolicy("sometimes"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bad policy = %v", err)
 	}
-	if (HealthCheck{}).Absent() != true || (&HealthCheck{HTTP: &HTTPCheck{Path: "/"}}).Absent() != false {
-		t.Fatal("HealthCheck.Absent broken")
+	if (&HealthCheck{}).Absent() != true {
+		t.Fatal("zero HealthCheck should count as absent")
+	}
+	if (&HealthCheck{HTTP: &HTTPCheck{Path: "/"}}).Absent() != false {
+		t.Fatal("HealthCheck with HTTP should not be absent")
 	}
 	if (Storage{Name: "data", MountPath: "/prometheus"}).String() != "data:/prometheus" {
 		t.Fatal("Storage.String broken")

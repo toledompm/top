@@ -53,17 +53,6 @@ const (
 	opModify changeOp = "~"
 )
 
-func (c FieldChange) op() changeOp {
-	switch {
-	case c.From == nil && c.To != nil:
-		return opAdd
-	case c.From != nil && c.To == nil:
-		return opRemove
-	default:
-		return opModify
-	}
-}
-
 // NewFieldChange builds an add/remove/modify change by pointer presence:
 // From nil means the field did not exist; To nil means it is removed.
 // At least one of From/To must be non-nil.
@@ -93,6 +82,30 @@ type FieldChange struct {
 	To *string
 	// SecretRef marks a secret-reference entry; value fields are nil.
 	SecretRef bool
+	// secretOp forces the rendered marker for secret-reference entries:
+	// "" (modify), "+" (add), "-" (remove).
+	secretOp string
+}
+
+func (c FieldChange) op() changeOp {
+	if c.SecretRef {
+		switch c.secretOp {
+		case "+":
+			return opAdd
+		case "-":
+			return opRemove
+		default:
+			return opModify
+		}
+	}
+	switch {
+	case c.From == nil && c.To != nil:
+		return opAdd
+	case c.From != nil && c.To == nil:
+		return opRemove
+	default:
+		return opModify
+	}
 }
 
 // NewSecretFieldChange builds the secret-safe change for a secret-bearing
@@ -109,14 +122,7 @@ func NewSecretFieldChange(path, op string) (FieldChange, error) {
 	default:
 		return FieldChange{}, fmt.Errorf("%w: secret field change %q: op must be empty, +, or -", ErrInvalid, path)
 	}
-	c := FieldChange{Path: path, SecretRef: true}
-	switch op {
-	case "+":
-		c.From = nil
-	case "-":
-		c.To = nil
-	}
-	return c, nil
+	return FieldChange{Path: path, SecretRef: true, secretOp: op}, nil
 }
 
 // String renders the change compactly. Secret-reference entries render as

@@ -21,6 +21,16 @@ jobs:
       - run: go build ./...
       - run: go test ./... -race -count=1
 
+  # Tier-2 (ADR-0012): real exec -> dokku shim on PATH; failure injection covered.
+  test-shim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: make test-shim
+
   lint:
     runs-on: ubuntu-latest
     steps:

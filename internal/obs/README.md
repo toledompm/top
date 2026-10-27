@@ -69,7 +69,4 @@ go inert on hosts without `/proc`, e.g. darwin dev machines — never an error).
 ## Testing
 
 `go test ./internal/obs` is hermetic and portable: log records are decoded
-JSON from a captured buffer; metrics are scraped through `httptest`. Note
-the module's `go.mod` currently needs `go mod tidy` (sums for
-`modernc.org/sqlite`'s transitive deps, added by `tools/tools.go`); run
-tests after a tidy.
+JSON from a captured buffer; metrics are scraped through `httptest`.

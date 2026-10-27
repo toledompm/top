@@ -4,9 +4,14 @@
 Declare your workloads in Git; TOP keeps a single-node Dokku host converged to
 that desired state — like Flux, but for a Dokku box instead of Kubernetes.
 
-> **Status: planning (Milestone 0).** No implementation yet. See
-> [`docs/adr/`](docs/adr/README.md) for proposed decisions and
-> [`docs/milestones/`](docs/milestones/README.md) for the delivery plan.
+> **Status: Milestone 1 (foundation) — in progress.** The Go module
+> (`github.com/toledompm/top`, go 1.24), the `topctl` CLI command tree
+> (validated stubs), and the spec/plan/store/exec/secrets/obs foundation
+> packages exist and are CI-verified; docs live in
+> [`docs/adr/`](docs/adr/README.md) +
+> [`docs/contracts/`](docs/contracts/README.md).
+> Unit (tier-1), fake-exec, and contract-conformance test seams are green;
+> the tier-3 real-Dokku harness lands in M2.
 
 ## What it does
 

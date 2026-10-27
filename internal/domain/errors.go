@@ -61,12 +61,12 @@ type ConflictError struct {
 }
 
 func (e ConflictError) Error() string {
-	return fmt.Sprintf(hintFmt, fmt.Sprintf("%s %q: %s", e.Kind, e.Ref, e.Reason), e.HintOrDef("verify ownership with `topctl doctor`"))
+	return fmt.Sprintf(hintFmt, fmt.Sprintf("%s %q: %s", e.Kind, e.Ref, e.Reason), e.hintOrDef("verify ownership with `topctl doctor`"))
 }
 func (e ConflictError) Unwrap() error { return ErrConflict }
 
-// HintOrDef returns the hint or a default when empty (used by renderers).
-func (e ConflictError) HintOrDef(def string) string {
+// hintOrDef returns the hint or a default when empty.
+func (e ConflictError) hintOrDef(def string) string {
 	if e.Hint == "" {
 		return def
 	}
@@ -84,12 +84,12 @@ type LockedError struct {
 func (e LockedError) Error() string {
 	return fmt.Sprintf(hintFmt,
 		fmt.Sprintf("lease %q is held by %s", e.Lease, e.Holder),
-		e.HintOrDef("retry once after the current run finishes; do not loop-retry"))
+		e.hintOrDef("retry once after the current run finishes; do not loop-retry"))
 }
 func (e LockedError) Unwrap() error { return ErrLocked }
 
-// HintOrDef returns the hint or a default when empty.
-func (e LockedError) HintOrDef(def string) string {
+// hintOrDef returns the hint or a default when empty.
+func (e LockedError) hintOrDef(def string) string {
 	if e.Hint == "" {
 		return def
 	}

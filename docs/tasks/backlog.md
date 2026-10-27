@@ -13,7 +13,7 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
 ## Milestone 1 — Foundation
 
 - **T-101 Go module + toolchain + CI skeleton.** Repo init, `go.mod`
-  (go ≥1.26), golangci-lint config, GH Actions: build/vet/lint/fmt/test +
+  (go 1.24 directive; deps pinned Go-1.24-compatible — sqlite v1.46.1, goose v3.26.0, client_golang v1.23.2), golangci-lint config, GH Actions: build/vet/lint/fmt/test +
   ADR-0014 hygiene grep. Deps: M0. AC: CI green on empty scaffold; fork-safe
   (no secrets). Tests: CI itself. Refs: ADR-0006/0014. Risk: none. Agent: core-go.
 - **T-102 Domain types.** `internal/domain`: Service, revisions, Operation,

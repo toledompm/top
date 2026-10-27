@@ -23,10 +23,10 @@
 
 ## Known benign patterns
 #
-# - "`top-homelab`-style" — docs (service-spec.md, m4 milestone) use this as an
-#   explicitly fictional label describing the kind of repo users have; no
-#   hosting data accompanies it. The hygiene script exempts this hyphenated
-#   form only; a bare "top-homelab" is still flagged.
+# - "`top-homelab`-style" — historical note (T-112 review): M1 docs and
+#   fixtures used this hyphenated label and have since been generalized to
+#   neutral language ("a platform repo"). The script still exempts the
+#   hyphenated form only; a bare "top-homelab" remains flagged.
 # - Version triples like "0.10.2" or "go1.24" never match because the IP regex
 #   requires three dotted numeric octets bounded by non-digit characters.
 

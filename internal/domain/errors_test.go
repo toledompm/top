@@ -40,7 +40,7 @@ func TestErrorMessagesAreReadable(t *testing.T) {
 		{
 			name: "conflict",
 			err:  ConflictError{Kind: "app", Ref: "default/web", Reason: "exists and is not ours", Hint: "adopt via `topctl install`"},
-			want: `app "default/web": exists and is not ours (hint: adopt via \` + "`" + `topctl install` + "`" + `)`,
+			want: `app "default/web": exists and is not ours (hint: adopt via ` + "`topctl install`)",
 		},
 		{
 			name: "locked",

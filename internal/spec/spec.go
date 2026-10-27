@@ -12,6 +12,7 @@ package spec
 import (
 	"errors"
 	"fmt"
+
 	"go.yaml.in/yaml/v3"
 )
 

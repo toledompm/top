@@ -2,8 +2,8 @@
 
 ## Objective & scope
 
-Close the bootstrap loop: the example platform repo (`top-homelab`-style,
-fictional public twin in `examples/`) defines `core` (the controller itself)
+Close the bootstrap loop: the example platform repo (a fictional public twin
+lives in `examples/`) defines `core` (the controller itself)
 and `observability` (Prometheus, Grafana, node_exporter, cAdvisor) as
 ServiceSpecs; `topctl install` hands management of them to the reconciler.
 Prove independence: TOP down ⇒ workloads + monitoring keep running.
