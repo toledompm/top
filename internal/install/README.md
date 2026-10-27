@@ -39,6 +39,13 @@ Deletions follow the **two-key rule** via
   guidance; `sudo` missing/password-required → the exact `sudo` command is
   printed and nothing more happens.
 
+## Pacing knob
+
+The health-wait poll interval is configurable via install-local env:
+`TOP_INSTALL_POLL_INTERVAL_MS` (default 2000 ms). The CLI hermetic tests
+and contributors on slow environments lower it to 1; it affects pacing
+only, never correctness.
+
 ## Known fences for later milestones
 
 - **Repo creation (`--init`)** is T-212/M3 — a missing platform repo is a

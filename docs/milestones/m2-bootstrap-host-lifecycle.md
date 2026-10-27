@@ -1,5 +1,45 @@
 # Milestone 2 — Bootstrap and host lifecycle
 
+> ## M2 review (T-211, 2026-10-27, closure)
+>
+> **Fleet result**: T-201..T-210 delivered. The tier-3 real-Dokku harness
+> ran a live 4/4 pass on Dokku 0.38.32 in a disposable container
+> (HealthyBackend, EnsureNetwork idempotent, EnsureApp + never-deployed
+> mirror, full lifecycle with `httpd:2.4-alpine` via `git:from-image`),
+> plus golden-argv coverage of `DeployImage`/`EnsureStorageEntry`/
+> `AttachStorage` (the installer's bootstrap extension, "extend-not-fork").
+>
+> **Gate matrix (full tree, final)**: vet OK · 16 packages race-clean ·
+> conformance (tag) OK · shim-tier OK · laws gate green (ALL PROOFS CHECK +
+> bridge) · gofumpt clean · golangci-lint 0 issues · hygiene pass ·
+> `install-top.sh --check` verified against the real CLI on the dev Mac
+> (doctor's WARN-profile dev-run semantics — recorded, not hidden).
+>
+> **Acceptance status (M2-capped)**: #1 install-from-git — implemented
+> through phase-4 bootstrap with adoption-wing M3/M4; #11 foreign-resource
+> survival — faked-host green (`TestUninstallRemovesOwneKeepsForeign`,
+> two-key law + typed refusal reasons); real-host e2e stays gated in the
+> tier-3/4 harness (M5 exercises the full matrix per plan). #12's
+> contributor path: `install-top.sh --check` runs read-only on a bare dev
+> Mac — portable confirmed.
+>
+> **Amendments applied during M2** (documented in-place):
+> - ADR-0006: the recovery/bootstrap direct-dokku carve-out (recover +
+>   install phase-2 exec dokku directly; inventory reads for the same
+>   reason).
+> - ADR-0012's CI: conformance joins after M2; the laws gate + a separate
+>   optional CI job for `make laws` shipped in M1.5.
+> - `internal/install`'s health-wait pacing has a documented env knob
+>   (`TOP_INSTALL_POLL_INTERVAL_MS`, install-local; the hermetic-CLI test
+>   and contributors use it; recorded in the package README).
+> - The `default-` namespace prefix collision flag (T-204 review) is
+>   recorded as the two-key-rule edge in ADR-0009's consequences at the
+>   T-204 finding level — naming layer alone NEVER deletes.
+>
+> **Owner open items**: none blocking M3. The M2 DoD now requires the
+> owner's explicit sign-off per the milestone plan.
+
+
 ## Objective & scope
 
 Safe host entry and exit: `topctl doctor`, `topctl install` (phases 0–4 of the
