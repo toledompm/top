@@ -1,0 +1,23 @@
+# TOP's own spec is just a Service (ADR-0005); the bootstrap annotation marks
+# the human-gated self-update. Fictional digest.
+apiVersion: top/v1alpha1
+kind: Service
+metadata:
+  name: top-controller
+  namespace: core
+  annotations:
+    top/special: bootstrap
+spec:
+  source:
+    image: ghcr.io/example/top-controller
+    digest: sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+  ports:
+    - { name: http, containerPort: 8080 }
+  routing:
+    mode: proxy
+    domains:
+      - top.example.com
+  env:
+    TZ: UTC
+  rollout:
+    maxUnavailable: 0

@@ -1,0 +1,23 @@
+# Illustrative example from docs/contracts/service-spec.md (fictional values,
+# from a `top-homelab`-style repo).
+apiVersion: top/v1alpha1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: observability
+spec:
+  source:
+    image: docker.io/prom/prometheus
+    digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  ports:
+    - { name: http, containerPort: 9090 }
+  routing:
+    mode: internal
+  healthcheck:
+    http: { path: /-/healthy, port: http }
+    intervalSeconds: 30
+  storage:
+    - { name: data, mountPath: /prometheus, size: 2Gi }
+  env:
+    TZ: UTC
+  restartPolicy: always
