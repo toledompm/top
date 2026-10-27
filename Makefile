@@ -14,9 +14,10 @@ help:
 	@echo "  make vet             go vet ./..."
 	@echo "  make fmt             gofumpt -l -w ."
 	@echo "  make lint            golangci-lint run (skips if not installed)"
+	@echo "  make laws            bend law gate: LAWS/PROOF check + bridge differential"
 	@echo "  make hygiene         ADR-0014 public/private grep"
 
-.PHONY: build test test-conformance vet fmt lint hygiene test-shim clean help
+.PHONY: build test test-conformance vet fmt lint hygiene test-shim laws clean help
 
 build:
 	CGO_ENABLED=0 $(GO) build -o $(BINARY) ./cmd/topctl
@@ -50,6 +51,18 @@ lint:
 
 hygiene:
 	./test/hygiene.sh
+
+# T-113 (docs/adr/0015-bend-laws.md, prototype): bend's proof gate over
+# laws/LAWS.bend + the Go differential bridge (test/bridge). Skips
+# gracefully when bend is not installed (bridge tests self-skip). Optional
+# Lean install enables `bend PROOF.bend --verdict` (kernel-backed recheck).
+# Supply chain: official installer is curl|sh; pin the version in CI (see
+# the ADR's open questions re: digest-pinned vendoring).
+laws:
+	@bend laws/PROOF.bend --verdict 2>/dev/null || { \
+		if command -v bend >/dev/null 2>&1; then bend laws/PROOF.bend; \
+		else echo "bend not installed; skipping law gate (install: curl -fsSL https://bend-lang.com/install.sh | sh)"; exit 0; fi; }
+	$(GO) test -count=1 ./test/bridge/
 
 clean:
 	rm -f $(BINARY)

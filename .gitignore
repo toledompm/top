@@ -32,3 +32,6 @@ scratch/
 
 # --- go build output ---
 /topctl
+
+# Generated: differential bridge drivers (make laws regenerates)
+laws/bridge_driver.bend

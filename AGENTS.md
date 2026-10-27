@@ -48,6 +48,15 @@ examples/            fictional, committable example configs
 - **License**: MIT (`LICENSE`). Go source files carry an SPDX header:
   `// SPDX-License-Identifier: MIT` in the file's leading comment block.
   Copyright holder in `LICENSE` is "toledompm and TOP contributors".
+- **Bend laws** (`laws/LAWS.bend` + `PROOF.bend`): machine-checked invariants
+  over TOP's pure core. When using Bend: run `bend guide` to learn it; keep
+  important rules as laws in `LAWS.bend` (human-owned claims — the AI
+  maintains `PROOF.bend` and the code); run `make laws` (proof gate +
+  differential bridge) before committing any change to `laws/`,
+  `internal/domain`, or `internal/plan`. SCOPE GUARD: laws cover the pure
+  core only — exec, store, and dokku-adapter behavior stays in the Go test
+  tiers; if the Bend reference model changes, `test/bridge` must stay green.
+  See `laws/README.md` + `docs/adr/0015-bend-laws.md`.
 - ADR format: see `docs/adr/README.md`.
 - Naming: TOP-managed things are prefixed `top-` (apps, volumes, files under
   `/var/lib/top`); namespaces are logical, see ADR-0004.

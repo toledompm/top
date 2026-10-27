@@ -239,3 +239,25 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
 | 6 | Webhook reachability | Poll-only fully supported as documented default; webhooks are the optimization |
 | 7 | Monitoring | **Prometheus-only v0** confirmed |
 | 8 | `--init` remote creation | **GitHub only** for v0; one-time PAT supplies the template push. Author's dev/test token lives in gitignored `.local/.env` — never referenced from tracked files |
+
+## M1.5 — owner-directed addition (appended 2026-10-27)
+
+- **T-113 Bend formal laws (PROTOTYPE).** Machine-checked invariants over
+  TOP's pure core in Bend v2.0.39: `laws/LAWS.bend` (human claims) +
+  `PROOF.bend` (AI-maintained proofs) + `CODE.bend` reference model +
+  `reference.bend` JSON entrypoints, deep-compared against
+  `internal/plan.ComputeAll` by the Go differential harness (`test/bridge`,
+  seeded random pass). Wire: `make laws` gate + AGENTS.md guidance + scope
+  guard. Deps: M1 (T-110 plan engine, T-111 conformance seam). AC: proof
+  gate prints ALL PROOFS CHECK; bridge deep-equal across hand tables +
+  seeded randomized cases; default `make test` unaffected (graceful skip).
+  Tests: proof gate + differential pass + negative controls (deliberate
+  model divergence must fail). Refs: ADR-0015 (proposed), ADR-0012,
+  laws/README.md. Risk: none (no prod code changes). **Approval: owner
+  verdict on ADR-0015 pending.** Agent: core-go + test.
+
+---
+
+Post-v0 note: T-602 is unaffected by T-113; if ADR-0015 is accepted, more
+laws (ordering acyclicity, ledger invariants, restore safeguards) land in
+M3–M5 review doc, never open at merge time.

@@ -43,3 +43,4 @@ contributor understands *why* without asking anyone.
 | [0012](0012-testing-strategy.md) | Testing strategy & e2e environment | accepted | yes |
 | [0013](0013-backup-scope-boundary.md) | Metadata vs application-data backup boundary | accepted | no |
 | [0014](0014-public-local-boundary.md) | Public repo vs local environment boundary | accepted | no |
+| [0015](0015-bend-laws.md) | Bend formal laws for the pure core (prototype) | proposed | yes |
