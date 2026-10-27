@@ -17,7 +17,7 @@ vet:
 	$(GO) vet ./...
 
 fmt:
-	$(GO) run mvdan.cc/gofumpt@latest -l -w .
+	$(GO) run mvdan.cc/gofumpt@v0.7.0 -l -w .
 
 lint:
 	@command -v golangci-lint >/dev/null 2>&1 || { \
