@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/toledompm/top/internal/config"
 	"github.com/toledompm/top/internal/exec"
 )
 
@@ -41,14 +40,6 @@ type SnapshotOptions struct {
 
 	// Now overrides the snapshot timestamp; zero means time.Now (UTC).
 	Now time.Time
-}
-
-// namespacesOrDefault resolves SnapshotOptions.Namespaces.
-func (o *SnapshotOptions) namespacesOrDefault() []string {
-	if len(o.Namespaces) > 0 {
-		return o.Namespaces
-	}
-	return config.NamespacePolicyOrder
 }
 
 // Snapshot captures the host state relevant to ownership decisions via the
@@ -189,7 +180,7 @@ func captureVolumesFromNamedList(ctx context.Context, r exec.Runner, snap *HostI
 	nets := captureNamedList(ctx, r, snap, "volumes", "volume", "ls")
 	vols := make([]Volume, 0, len(nets))
 	for _, n := range nets {
-		vols = append(vols, Volume{Name: n.Name, Driver: n.Driver, Labels: n.Labels})
+		vols = append(vols, Volume(n))
 	}
 	return vols
 }

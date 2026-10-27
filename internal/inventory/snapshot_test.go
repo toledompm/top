@@ -55,12 +55,12 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	// Read-only command set: nothing destructive in the argv log.
 	cmds := f.RecordedCommands()
 	for _, c := range cmds {
-		switch {
-		case c == "docker ps -a --format json",
-			c == "docker network ls --format json",
-			c == "docker volume ls --format json",
-			c == "ss -tlnH",
-			c == "dokku apps:list --format json":
+		switch c {
+		case "docker ps -a --format json",
+			"docker network ls --format json",
+			"docker volume ls --format json",
+			"ss -tlnH",
+			"dokku apps:list --format json":
 		default:
 			t.Errorf("unexpected command in snapshot: %s", c)
 		}

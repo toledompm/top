@@ -1,0 +1,550 @@
+// SPDX-License-Identifier: MIT
+
+package install
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/toledompm/top/internal/doctor"
+	"github.com/toledompm/top/internal/domain"
+	"github.com/toledompm/top/internal/exec"
+	"github.com/toledompm/top/internal/store"
+	"github.com/toledompm/top/internal/store/sqlite"
+)
+
+// The phased runner: docs/contracts/installer.md phases 0-5 with resume.
+//
+// Resume discipline — every phase records ONE store operation (kind
+// "install", details JSON {"phase": N, ...}); the NEWEST op per phase
+// decides that phase's fate:
+//
+//	succeeded → skip (idempotent resume; re-running `topctl install`
+//	            after a complete install is a no-op resume)
+//	running/pending/failed or no record → redo, after aborting any
+//	            non-terminal leftovers (a previous invocation died
+//	            mid-phase; SIGKILL leaves no graceful trail).
+//
+// Phase 0 (preflight) is the deliberate exception: doctor is read-only
+// and cheap, so it re-runs on EVERY invocation — an interrupted install's
+// re-run re-verifies the host before touching anything again.
+//
+// Store details are fixed at InsertOperation (the update path moves state
+// only), so each phase runs its work FIRST (anchored on the op's fresh
+// UUID, which exists before any run), collects its details payload, and
+// then records the full lifecycle pending → running → terminal. An
+// interruption between work and record is safe: the next run redoes the
+// phase (every phase body is idempotent — Ensure* verbs, ledger walks
+// tolerate already-recorded rows).
+
+// Phase identifiers as recorded in operation details.
+const (
+	phasePreflight       = 0
+	phaseInventory       = 1
+	phaseDokkuSetup      = 2
+	phaseWiring          = 3
+	phaseBootstrapDeploy = 4
+	phaseReport          = 5
+)
+
+// phaseNames for op details and Result.PhasesRun rendering.
+var phaseNames = map[int]string{
+	phasePreflight:       "0-preflight",
+	phaseInventory:       "1-inventory",
+	phaseDokkuSetup:      "2-dokku-setup",
+	phaseWiring:          "3-platform-wiring",
+	phaseBootstrapDeploy: "4-bootstrap-deploy",
+	phaseReport:          "5-report",
+}
+
+// maxDetailsSnapshotBytes caps the inventory snapshot embedded in an
+// operation's details JSON (the op stays a fixed-small-size history row;
+// honest degradation beats an oversized record). The full JSON ALSO lives
+// under the data dir when it already exists (phase 1's documented "keep
+// it inside TOP dirs" rule — never outside, which would be a host
+// mutation).
+const maxDetailsSnapshotBytes = 256 * 1024
+
+// Installer pins (T-206): Dokku v0.38.32 was the newest 0.38.x when the
+// constant landed (2026-10-27, verified against the docs page at review
+// time; deliberately NOT network-verified by code or tests — no network
+// in tier-1). Bump CONSCIOUSLY — release review, e2e matrix rerun; the
+// doctor floor stays "0.38" (ADR-0001).
+const (
+	dokkuBootstrapScriptURL = "https://dokku.com/install/v0.38.32/bootstrap.sh"
+	dokkuBootstrapTag       = "v0.38.32"
+	bootstrapScriptFileName = "bootstrap.sh"
+)
+
+// wgetScriptCommand / sudoScriptCommands render the exact manual command
+// equivalents of the gated Dokku bootstrap — the printable runbook
+// ADR-0009 mandates (TOP never assumes passwordless sudo, never
+// escalates; the operator's password prompt happens in THEIR terminal).
+func wgetScriptCommand() string { return "wget -NP . " + dokkuBootstrapScriptURL }
+
+func sudoScriptCommands() []string {
+	return []string{
+		wgetScriptCommand(),
+		"sudo DOKKU_TAG=" + dokkuBootstrapTag + " bash " + bootstrapScriptFileName,
+	}
+}
+
+// Install runs the phased installer (docs/contracts/installer.md). On any
+// phase failure it returns the partial Result plus a typed error; prior
+// phases stay untouched and the failing op records the redacted failure
+// (bootstrap-failed marker for phase 4). A re-run resumes where the store
+// says work is left.
+func Install(ctx context.Context, opts Options) (*Result, error) {
+	opts.applyDefaults()
+	if err := validateRepoURL(opts.RepoURL); err != nil {
+		return nil, err
+	}
+	if !opts.DryRun && !opts.Confirm {
+		return nil, fmt.Errorf("mutating phases require the ADR-0009 approval marker: %w", ErrGateRequired)
+	}
+	if !opts.DryRun && opts.Backend == nil {
+		return nil, fmt.Errorf("install: %w: Options.Backend is required when not --dry-run", domain.ErrInvalid)
+	}
+
+	res := &Result{Notes: []string{}}
+
+	// Dry-run: the full plan, zero mutations — no store, no ledger, no
+	// argv beyond read-only probes, no filesystem changes. Phase 0 runs
+	// for real (read-only): the plan is honest about the host even under
+	// a dry-run, and a failing preflight is a clean, argument-free
+	// abort.
+	if opts.DryRun {
+		rep, perr := runPreflight(ctx, opts)
+		res.Preflight = rep
+		if perr != nil {
+			return res, perr
+		}
+		res.PhasesRun = dryRunPlan(opts)
+		res.Notes = append(res.Notes,
+			"dry-run: nothing was written; cross-check the plan, then re-run with --confirm",
+			"adoption-record-only: first reconciliation (contract phase 5) is M3/M4; the bootstrap deployment stays bootstrap-owned until the controller adopts itself")
+		return res, nil
+	}
+
+	st, ownStore, err := openStore(ctx, opts.DataDir, opts.Store)
+	if err != nil {
+		return nil, err
+	}
+	if ownStore {
+		defer func() { _ = st.Close() }()
+	}
+	if err := abortStaleInstallOps(ctx, st, opts.Now()); err != nil {
+		return nil, err
+	}
+
+	// Phase 0 — preflight always re-runs (read-only). Recorded through
+	// the same phase-op wrapper (its audit record exists like every
+	// other phase's). Findings abort before anything mutates.
+	if err := runPhase(ctx, st, opts, phasePreflight, res, func(opID string, res *Result, extra phaseExtras) error {
+		rep, perr := runPreflight(ctx, opts)
+		res.Preflight = rep
+		return perr
+	}); err != nil {
+		return res, err
+	}
+	// Phases 1..4 — resume-aware; a failure stops the sequence.
+	done := map[int]bool{}
+	if err := scanPhases(ctx, st, done); err != nil {
+		return nil, err
+	}
+
+	var failure error
+	skip := func(p int) {
+		if done[p] {
+			res.PhasesSkipped = append(res.PhasesSkipped, phaseNames[p])
+		}
+	}
+
+	if done[phaseInventory] {
+		skip(phaseInventory)
+	} else if err := runPhase(ctx, st, opts, phaseInventory, res, func(opID string, res *Result, extra phaseExtras) error {
+		return runInventory(ctx, opts, st, opID, res, extra)
+	}); err != nil {
+		failure = err
+	}
+
+	if failure == nil && done[phaseDokkuSetup] {
+		skip(phaseDokkuSetup)
+	} else if failure == nil {
+		if err := runPhase(ctx, st, opts, phaseDokkuSetup, res, func(opID string, res *Result, extra phaseExtras) error {
+			return runDokkuSetup(ctx, opts, res)
+		}); err != nil {
+			failure = err
+		}
+	}
+
+	if failure == nil && done[phaseWiring] {
+		skip(phaseWiring)
+	} else if failure == nil {
+		if err := runPhase(ctx, st, opts, phaseWiring, res, func(opID string, res *Result, extra phaseExtras) error {
+			return runWiring(ctx, opts, st, opID, res, extra)
+		}); err != nil {
+			failure = err
+		}
+	}
+
+	if failure == nil && done[phaseBootstrapDeploy] {
+		skip(phaseBootstrapDeploy)
+	} else if failure == nil {
+		if err := runPhase(ctx, st, opts, phaseBootstrapDeploy, res, func(opID string, res *Result, extra phaseExtras) error {
+			return runBootstrapDeploy(ctx, opts, st, opID, res, extra)
+		}); err != nil {
+			failure = err
+		}
+	}
+
+	// Phase 5 — report always runs (even after a failure: the Result
+	// carries the partial lists; this op marks the invocation itself).
+	repErr := runPhase(ctx, st, opts, phaseReport, res, func(opID string, res *Result, extra phaseExtras) error {
+		return nil // the report content IS the Result
+	})
+	if err := firstErr(failure, repErr); err != nil {
+		return res, err
+	}
+
+	res.NextCommands = []string{
+		"topctl status",
+		"topctl doctor",
+	}
+	res.Notes = append(res.Notes,
+		"adoption-record-only: first reconciliation (contract phase 5) is M3/M4; the bootstrap deployment stays bootstrap-owned until the controller adopts itself")
+	res.Resumed = len(res.PhasesSkipped) > 0
+	return res, nil
+}
+
+func firstErr(a, b error) error {
+	if a != nil {
+		return a
+	}
+	return b
+}
+
+// phaseExtras is the phase's completed-work payload for the operation's
+// details JSON (closure-filled; JSON-marshalable values only).
+type phaseExtras map[string]any
+
+// --- plan rendering -----------------------------------------------------------
+
+// dryRunPlan renders the planned phases as the phased list.
+func dryRunPlan(opts Options) []string {
+	return []string{
+		"0-preflight: run doctor + installer checks (read-only)",
+		"1-inventory: snapshot host state → ledger as pre-existing (no writes in dry-run)",
+		"2-dokku-setup: " + dokkuSetupPlan(opts),
+		"3-platform-wiring: dirs " + dirsPlan(opts.DataDir) + "; network " + InternalNetwork + "; deploy key: " + deployKeyPlan(opts),
+		"4-bootstrap-deploy: storage entry " + StorageEntryName + " → app " + opts.ControllerAppName() + " ← " + opts.ImageRef() + "; bounded health wait",
+		"5-report: created/adopted/left-alone/checked + next commands",
+	}
+}
+
+func dokkuSetupPlan(opts Options) string {
+	if !opts.InstallDokku {
+		return "verify dokku presence/health (refusing to install without --install-dokku)"
+	}
+	return "if absent: pinned upstream bootstrap (" + wgetScriptCommand() + " / sudo DOKKU_TAG=" + dokkuBootstrapTag + " bash " + bootstrapScriptFileName + ") after the printed change list; else verify version ≥ " + doctor.MinDokkuVersion
+}
+
+func dirsPlan(dataDir string) string {
+	return dataDir + "/{,secrets,git,backups} as 0700 dirs (files 0600)"
+}
+
+func deployKeyPlan(opts Options) string {
+	if opts.DeployKey == "" {
+		return "operator-supplied path REQUIRED in v0 (generation is M3)"
+	}
+	return "copy operator-supplied " + opts.DeployKey + " → <dataDir>/git/deploy_key (0600)"
+}
+
+// --- the uniform phase-operation wrapper ----------------------------------------
+
+// runPhase is the uniform per-phase operation-record wrapper: the work
+// runs anchored on a fresh op UUID; on completion the audit record is
+// appended (pending → running → terminal, with the redacted failure when
+// the work failed) and the Result's phase list updated. The operation's
+// Details payload carries the phase metadata plus whatever `extra` grew
+// during the work (the phase-1 snapshot).
+func runPhase(
+	ctx context.Context,
+	st store.Store,
+	opts Options,
+	phase int,
+	res *Result,
+	work func(opID string, res *Result, extra phaseExtras) error,
+) error {
+	phaseName := phaseNames[phase]
+	op, err := domain.NewOperation(domain.OpInstall, domain.ActorUser, "", "")
+	if err != nil {
+		return fmt.Errorf("phase %s: create op: %w", phaseName, err)
+	}
+
+	extra := phaseExtras{}
+	workErr := work(op.ID.String(), res, extra)
+
+	op.Details = phaseDetails(phase, opts, extra)
+	if err := st.InsertOperation(ctx, op); err != nil {
+		return fmt.Errorf("phase %s: record insert: %w", phaseName, err)
+	}
+	if err := st.UpdateOperationState(ctx, op.ID, domain.OpRunning, "", opts.Now()); err != nil {
+		return fmt.Errorf("phase %s: record running: %w", phaseName, err)
+	}
+	var terminal error
+	if workErr != nil {
+		terminal = st.UpdateOperationState(ctx, op.ID, domain.OpFailed, renderPhaseFailure(phaseName, workErr), opts.Now())
+	} else {
+		terminal = st.UpdateOperationState(ctx, op.ID, domain.OpSucceeded, "", opts.Now())
+	}
+	if terminal != nil {
+		return fmt.Errorf("phase %s: record terminal: %w", phaseName, terminal)
+	}
+	if workErr != nil {
+		if phase == phaseBootstrapDeploy {
+			return fmt.Errorf("phase %s: bootstrap-failed: %w", phaseName, workErr)
+		}
+		return fmt.Errorf("phase %s: %w", phaseName, workErr)
+	}
+	res.PhasesRun = append(res.PhasesRun, phaseName)
+	return nil
+}
+
+// renderPhaseFailure prefixes the redacted failure text with the
+// bootstrap-failed marker when the failing phase is the bootstrap deploy
+// (installer contract failure behavior: `topctl recover diagnose`
+// explains next steps) and always carries the resume command.
+func renderPhaseFailure(phaseName string, err error) string {
+	prefix := ""
+	if phaseName == phaseNames[phaseBootstrapDeploy] {
+		prefix = "bootstrap-failed: "
+	}
+	return prefix + strings.TrimSpace(err.Error()) +
+		" (resume: re-run `topctl install <repo-url>` — completed phases are skipped)"
+}
+
+// phaseDetails is the details JSON shape for one install phase op.
+func phaseDetails(phase int, opts Options, extra map[string]any) map[string]any {
+	d := map[string]any{
+		"phase":     phase,
+		"phaseName": phaseNames[phase],
+		"repo":      opts.RepoURL,
+		"branch":    opts.Branch,
+		"dataDir":   opts.DataDir,
+	}
+	for k, v := range extra {
+		d[k] = v
+	}
+	return d
+}
+
+// --- store plumbing ----------------------------------------------------------
+
+// openStore honors an injected store; otherwise opens (and, when owned,
+// later closes) the state file at <dataDir>/top.db — recover's documented
+// path, kept identical so diagnose finds the same file.
+func openStore(ctx context.Context, dataDir string, injected store.Store) (store.Store, bool, error) {
+	if injected != nil {
+		return injected, false, nil
+	}
+	path := dataDir + "/" + "top.db"
+	s, oerr := sqlite.Open(ctx, path)
+	if oerr != nil {
+		return nil, false, fmt.Errorf("%w: %s: %v", ErrStoreUnavailable, path, oerr)
+	}
+	return s, true, nil
+}
+
+// abortStaleInstallOps marks non-terminal install ops aborted — a previous
+// invocation died mid-phase (SIGKILL leaves no failed marker); redoing the
+// phase is safe and is what the resume discipline prescribes.
+func abortStaleInstallOps(ctx context.Context, st store.Store, now time.Time) error {
+	ops, err := st.ListOperations(ctx, 100, &store.OperationFilter{Kind: domain.OpInstall})
+	if err != nil {
+		return fmt.Errorf("aborting stale install ops: %w", err)
+	}
+	for _, op := range ops {
+		if op.State == domain.OpPending || op.State == domain.OpRunning {
+			if err := st.UpdateOperationState(ctx, op.ID, domain.OpAborted, "superseded by a new install run", now); err != nil {
+				return fmt.Errorf("abort stale install op %s: %w", op.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
+// scanPhases fills `done` from the store: the newest op per phase decides
+// (ListOperations returns newest-first; the first op seen per phase wins).
+func scanPhases(ctx context.Context, st store.Store, done map[int]bool) error {
+	ops, err := st.ListOperations(ctx, 100, &store.OperationFilter{Kind: domain.OpInstall})
+	if err != nil {
+		return fmt.Errorf("scanning install phase state: %w", err)
+	}
+	for _, op := range ops {
+		p, ok := phaseOf(op)
+		if !ok || done[p] {
+			continue
+		}
+		done[p] = op.State == domain.OpSucceeded
+	}
+	return nil
+}
+
+func phaseOf(op *domain.Operation) (int, bool) {
+	v, ok := op.Details["phase"]
+	if !ok {
+		return 0, false
+	}
+	switch n := v.(type) {
+	case float64: // JSON round-trip
+		return int(n), true
+	case int:
+		return n, true
+	default:
+		return 0, false
+	}
+}
+
+// --- phase 0: preflight -------------------------------------------------------
+
+// runPreflight runs doctor (contract phase 0) plus the installer's own
+// checks (repo reachable and non-empty per ADR-0005's no-init rule,
+// deploy-key material paths for phase 3). Read-only. The call only fails
+// after the findings are recorded (one run shows every fix at once),
+// with the typed ErrPreflightFailed.
+func runPreflight(ctx context.Context, opts Options) (doctor.Report, error) {
+	rep := doctor.Run(ctx, doctor.Options{
+		Runner:             opts.Runner,
+		DataDir:            opts.DataDir,
+		ReservedNamespaces: opts.Namespaces,
+		SkipPorts:          opts.SkipPorts,
+		OSProbe:            opts.OSProbe,
+		Probe:              opts.Probe,
+		MemProbe:           opts.MemProbe,
+		DiskProbe:          opts.DiskProbe,
+		OSReleasePath:      opts.OSReleasePath,
+	})
+
+	// Installer-specific preflight checks (doctor stays generic).
+	addErrFinding(&rep, "repo/reachable", checkRepo(ctx, opts))
+	addErrFinding(&rep, "install-input", checkDeployKeyPaths(opts))
+
+	if !rep.OK() {
+		return rep, fmt.Errorf("%w: %s", ErrPreflightFailed, rep.Summary())
+	}
+	return rep, nil
+}
+
+// addErrFinding turns one installer check error into a fail finding in
+// the doctor vocabulary, so the phase-0 report stays one shape.
+func addErrFinding(r *doctor.Report, id string, err error) {
+	if err == nil {
+		return
+	}
+	f := doctor.Finding{ID: id, Severity: doctor.SeverityFail, Check: "installer checks", Message: err.Error()}
+	var repo *RepoErr
+	if errors.As(err, &repo) {
+		f.Hint = repo.Hint
+	} else {
+		f.Hint = "re-run `topctl install --help` for the option surface"
+	}
+	r.Findings = append(r.Findings, f)
+}
+
+// RepoErr is the typed repo finding (its message doubles as the clean
+// preflight error ADR-0005 mandates for missing/empty repos).
+type RepoErr struct {
+	Message string
+	Hint    string
+}
+
+func (e *RepoErr) Error() string { return e.Message }
+
+// checkRepo validates the platform repo: reachable, branch non-empty
+// (`git ls-remote <url> <branch>`; read-only). Missing or empty → the
+// clean, instruction-bearing error. `--init` repo creation is T-212/M3
+// and deliberately absent: install never creates, pushes, or
+// initializes the repo (ADR-0005).
+func checkRepo(ctx context.Context, opts Options) error {
+	url, branch := opts.RepoURL, opts.Branch
+	_, _, err := opts.Runner.Run(ctx, "git", "ls-remote", url, branch)
+	switch {
+	case errors.Is(err, exec.ErrNotFound):
+		return &RepoErr{
+			Message: "git is not on PATH; the platform repo cannot be verified",
+			Hint:    "install git (the gated dokku bootstrap brings it along, or `sudo apt-get install -y git`)",
+		}
+	case err != nil:
+		return &RepoErr{
+			Message: fmt.Sprintf("platform repo %s is not reachable: %v", url, err),
+			Hint:    "create the repo and push at least one commit to " + branch + ", or correct the URL. (--init-driven repo creation is T-212/M3; install never auto-creates the repo — ADR-0005.)",
+		}
+	}
+	// Exit 0: for the branch pattern, exit-0 with empty stdout means the
+	// repo answered but no ref matched — empty repo / no commits on the
+	// branch.
+	out, _, _ := opts.Runner.Run(ctx, "git", "ls-remote", url, branch)
+	if strings.TrimSpace(string(out)) == "" {
+		return &RepoErr{
+			Message: fmt.Sprintf("platform repo %s resolved, but branch %q has no commits (empty) — refusing to bootstrap from it", url, branch),
+			Hint:    "push the initial platform-repo content (services, spec) and re-run. `topctl install --init` lands in T-212/M3; the installer never auto-creates repos (ADR-0005).",
+		}
+	}
+	return nil
+}
+
+// checkDeployKeyPaths validates the operator-supplied key-material paths
+// (phase 3's provisioning inputs; v0 = path (a) only — operator points at
+// files; subprocess `ssh-keygen` generation is deliberately deferred with
+// an explicit TODO to M3, because inventing keys is a bigger consent than
+// pointing at an existing one).
+func checkDeployKeyPaths(opts Options) error {
+	if opts.DeployKey == "" {
+		return fmt.Errorf("--deploy-key is required in v0: point it at the private key file already authorized with the provider; key GENERATION (via ssh-keygen) is deferred to M3")
+	}
+	if err := readableFile(opts.DeployKey); err != nil {
+		return fmt.Errorf("--deploy-key %s: %w", opts.DeployKey, err)
+	}
+	if opts.KnownHosts == "" {
+		return fmt.Errorf("--known-hosts is required in v0: point it at the pinned known_hosts file for the git provider host; unpinned host keys are never accepted")
+	}
+	if err := readableFile(opts.KnownHosts); err != nil {
+		return fmt.Errorf("--known-hosts %s: %w", opts.KnownHosts, err)
+	}
+	return nil
+}
+
+func readableFile(path string) error {
+	st, err := os.Stat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("file does not exist")
+	case err != nil:
+		return err
+	case st.IsDir():
+		return fmt.Errorf("is a directory, want a file")
+	}
+	return nil
+}
+
+// validateRepoURL refuses non-URL-ish repo arguments early (the CLI's
+// usage gate): scheme'd URLs or scp-like "git@host:path" only — "does the
+// arg plausibly name a remote" is the check; reachability is phase 0's job.
+var repoURLOrSCP = regexp.MustCompile(`^(https?://|ssh://|git://)|^[^@\s]+@[^:\s]+:[^\s]+$`)
+
+func validateRepoURL(url string) error {
+	if url == "" {
+		return fmt.Errorf("install: %w: empty repo URL", domain.ErrInvalid)
+	}
+	if !repoURLOrSCP.MatchString(strings.TrimSpace(url)) {
+		return fmt.Errorf("install: %w: repo %q does not look like a git remote (want https://…, ssh://…, or git@host:path)", domain.ErrInvalid, url)
+	}
+	return nil
+}

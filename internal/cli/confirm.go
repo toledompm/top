@@ -26,13 +26,6 @@ import (
 // In the stub phase the gate runs at flag-validation time only — no
 // confirmation artifact is persisted yet; that audit trail is M2 work.
 
-// addConfirmFlag registers the --confirm gate on a command. Self-documenting
-// in --help; kept here so the wording is identical across commands.
-func addConfirmFlag(cmd *cobra.Command) {
-	cmd.Flags().Bool("confirm", false,
-		"proceed without an interactive prompt (deterministic path for agents/CI; ADR-0009)")
-}
-
 // stdinIsTTY answers "could we ask a human right now?" Tests force the
 // answer with Options.StdinIsTTY (real detection otherwise), because a
 // captured io.Reader can never be a character device.

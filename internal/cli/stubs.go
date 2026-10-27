@@ -6,10 +6,24 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/toledompm/top/internal/backend/dokku"
 	"github.com/toledompm/top/internal/doctor"
 	"github.com/toledompm/top/internal/domain"
+	"github.com/toledompm/top/internal/exec"
+	"github.com/toledompm/top/internal/install"
 	"github.com/toledompm/top/internal/recover"
 )
+
+// orRunner resolves ONE shared Runner for a command body: Options.Runner
+// (tests inject the fake), else the production FastExec. Compositions
+// (install + its dokku backend) share the same value so a test's fake
+// sees every argv.
+func (c *cctx) orRunner() exec.Runner {
+	if c.runner != nil {
+		return c.runner
+	}
+	return exec.NewFastExec()
+}
 
 // Every command from the docs/contracts/cli.md table is defined here as a
 // *validated stub*: flags parse, arguments and flag values validate
@@ -74,23 +88,91 @@ func newDoctorCmd(c *cctx) *cobra.Command {
 	return cmd
 }
 
-// newInstallCmd — mutating, confirm-gated stub.
+// newInstallCmd — REAL (T-205..T-207): the phased installer behind the
+// same flag surface the stub validated. Wiring mirrors the doctor/recover
+// bodies: streams+config from the cctx, Runner from Options (fake in
+// tests), the concrete backend wired HERE (composition root — internal/
+// install only knows the PlatformBackend interface, ADR-0006). Exit codes:
+// preflight findings → 1 (drift space, doctor's row); gate/sudo refusals
+// and phase failures → 3; store unavailability → 4; usage → 2. --dry-run
+// prints the plan, mutates nothing (ADR-0009 dry-run requirement).
+//
+// NOTE (M-scope): repo creation/--init is T-212/M3; deploy-key GENERATION
+// is M3 (the operator's paths are required in v0). The interactive TTY is
+// the CLI default — requireConfirm prompts on a terminal and --confirm is
+// the deterministic path; the installer itself never prompts.
 func newInstallCmd(c *cctx) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <repo>",
 		Short: "Install TOP on this host from a platform repo (confirm-gated)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := c.requireConfirm(cmd, "installing TOP on this host"); err != nil {
 				return err
 			}
-			return c.notImpl(cmd, true)
+			runner := c.orRunner()
+			opts := install.Options{
+				Runner:          runner,
+				Backend:         dokku.New(runner),
+				DataDir:         c.cfg.DataDir,
+				RepoURL:         args[0],
+				Branch:          c.cfg.Git.Branch,
+				InstallDokku:    flagBool(cmd, "install-dokku"),
+				Confirm:         true, // requireConfirm above IS the gate
+				DryRun:          flagBool(cmd, "dry-run"),
+				DeployKey:       flagString(cmd, "deploy-key"),
+				KnownHosts:      flagString(cmd, "known-hosts"),
+				ControllerImage: flagString(cmd, "controller-image"),
+				ControllerTag:   flagString(cmd, "controller-tag"),
+				Namespaces:      c.cfg.Namespaces.Reserved,
+				SkipPorts:       flagBool(cmd, "skip-ports"),
+			}
+			res, err := install.Install(cmd.Context(), opts)
+			if err != nil {
+				return c.installExit(cmd, res, err)
+			}
+			return c.emitInstallResult(cmd, res)
 		},
 	}
-	addConfirmFlag(cmd)
-	cmd.Flags().Bool("install-dokku", false, "also install Dokku if absent")
-	cmd.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
+	cmd.Flags().Bool("install-dokku", false, "also install Dokku if absent (approval-gated change list: apt packages, nginx on 80/443, dokku user, sshcommand)")
+	cmd.Flags().Bool("skip-ports", false, "skip the read-only 80/443 availability probe in preflight")
+	cmd.Flags().String("deploy-key", "", "path to the operator-supplied private deploy key (provisioned 0600 into <dataDir>/git; required in v0)")
+	cmd.Flags().String("known-hosts", "", "path to the pinned known_hosts file (provisioned 0600 into <dataDir>/git; required in v0)")
+	cmd.Flags().String("controller-image", "", "override the pinned bootstrap controller image (default: internal/install's ghcr.io/example/top/topctl)")
+	cmd.Flags().String("controller-tag", "", "override the pinned bootstrap controller tag (default: the installer pin)")
 	return cmd
+}
+
+// emitInstallResult renders a completed Result (envelope on JSON; text
+// report for humans).
+func (c *cctx) emitInstallResult(cmd *cobra.Command, res *install.Result) error {
+	if c.format == FormatJSON {
+		return c.emitOk(cmd, install.Summary(res), res.DataMap())
+	}
+	if err := install.RenderResultText(c.out, res); err != nil {
+		return &ExitError{Code: ExitFailed, Err: err}
+	}
+	return nil
+}
+
+// installExit maps an install failure (partial Result retained) onto the
+// cli contract's exit codes: preflight/decisions-with-findings → 1 (the
+// drift/diagnose space), gate/sudo refusals + phase failures → 3, store
+// unavailability → 4.
+func (c *cctx) installExit(cmd *cobra.Command, res *install.Result, err error) error {
+	switch {
+	case errors.Is(err, install.ErrPreflightFailed), errors.Is(err, install.ErrNothingInstalled):
+		return c.emitErrCode(cmd, "preflight-failed", ExitDrift, err.Error())
+	case errors.Is(err, install.ErrStoreUnavailable):
+		return c.emitErrCode(cmd, "store-unavailable", ExitUnreachable, err.Error())
+	case errors.Is(err, domain.ErrInvalid):
+		return c.usageErr(cmd, err.Error())
+	default:
+		if res != nil {
+			_ = install.RenderResultText(c.out, res) // partial progress still prints
+		}
+		return c.emitErrCode(cmd, "failed", ExitFailed, err.Error())
+	}
 }
 
 // newStatusCmd — read-only stub.
@@ -154,12 +236,10 @@ func newReconcileCmd(c *cctx) *cobra.Command {
 			return c.notImpl(cmd, true)
 		},
 	}
-	addConfirmFlag(cmd)
 	cmd.Flags().Bool("now", false, "reconcile immediately instead of honoring locks/backoff")
 	cmd.Flags().String("service", "", "reconcile a single service (\"ns/name\"; bare \"name\" = default/name)")
 	cmd.Flags().Bool("prune", false, "delete services observed but absent from the spec (confirm-gated)")
 	cmd.Flags().Bool("include-controller", false, "include TOP's own controller in the reconcile (confirm-gated, ADR-0005)")
-	cmd.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
 	return cmd
 }
 
@@ -183,7 +263,6 @@ func newDeployCmd(c *cctx) *cobra.Command {
 		},
 	}
 	cmd.Flags().String("revision", "", "deploy a specific git commit sha instead of the resolved desired revision")
-	cmd.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
 	return cmd
 }
 
@@ -248,7 +327,6 @@ func newBackupCmd(c *cctx) *cobra.Command {
 			return c.notImpl(cmd, true)
 		},
 	}
-	addConfirmFlag(create)
 	create.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
 
 	list := &cobra.Command{
@@ -329,7 +407,6 @@ func newRecoverCmd(c *cctx) *cobra.Command {
 			})
 		},
 	}
-	addConfirmFlag(restart)
 	restart.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
 
 	redeploy := &cobra.Command{
@@ -350,7 +427,6 @@ func newRecoverCmd(c *cctx) *cobra.Command {
 			})
 		},
 	}
-	addConfirmFlag(redeploy)
 	redeploy.Flags().String("revision", "", "redeploy a specific git commit sha instead of the store's last-known-good (or the pinned bootstrap image)")
 	redeploy.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
 
@@ -371,7 +447,6 @@ func newRecoverCmd(c *cctx) *cobra.Command {
 			return nil
 		},
 	}
-	addConfirmFlag(restore)
 	restore.Flags().String("backup", "", "backup file to restore (required once restore lands in M5)")
 	restore.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
 
@@ -419,9 +494,12 @@ func (c *cctx) cfgPathOrCanonical() string {
 	return c.cfg.DataDir + "/top-config.yaml"
 }
 
-// newUninstallCmd — destructive, gated stub. Tiered per-flag
-// confirmations (--purge-data etc., ADR-0009) arrive with the real
-// teardown in M2; the stub still requires --confirm for the whole thing.
+// newUninstallCmd — REAL (T-208): the ownership-safe teardown behind the
+// same flag surface. Each purge tier keeps its own flag (ADR-0009: no
+// yes-to-everything); --confirm is the whole command's gate. The fresh
+// snapshot + two-key law decide every removal; defaults keep all data.
+// Exit codes: nothing-installed / decision findings → 1; failures → 3;
+// store unavailability → 4.
 func newUninstallCmd(c *cctx) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "uninstall",
@@ -431,14 +509,29 @@ func newUninstallCmd(c *cctx) *cobra.Command {
 			if err := c.requireConfirm(cmd, "uninstalling TOP (destructive)"); err != nil {
 				return err
 			}
-			return c.notImpl(cmd, true)
+			runner := c.orRunner()
+			opts := install.UninstallOptions{
+				Runner:  runner,
+				Backend: dokku.New(runner),
+				DataDir: c.cfg.DataDir,
+
+				PurgeData:      flagBool(cmd, "purge-data"),
+				PurgeSecrets:   flagBool(cmd, "purge-secrets"),
+				UninstallDokku: flagBool(cmd, "uninstall-dokku"),
+
+				Confirm: true, // requireConfirm above IS the gate
+				DryRun:  flagBool(cmd, "dry-run"),
+			}
+			res, err := install.Uninstall(cmd.Context(), opts)
+			if err != nil {
+				return c.installExit(cmd, res, err)
+			}
+			return c.emitInstallResult(cmd, res)
 		},
 	}
-	addConfirmFlag(cmd)
-	cmd.Flags().Bool("purge-data", false, "also delete /var/lib/top state (irreversible)")
-	cmd.Flags().Bool("purge-secrets", false, "also delete the secret store (irreversible)")
-	cmd.Flags().Bool("uninstall-dokku", false, "also uninstall Dokku itself")
-	cmd.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
+	cmd.Flags().Bool("purge-data", false, "also delete TOP's SQLite state, storage entry, and backups under <dataDir> (irreversible; secrets/git keys untouched — their own tier)")
+	cmd.Flags().Bool("purge-secrets", false, "also delete the secret files and git key material under <dataDir> (irreversible)")
+	cmd.Flags().Bool("uninstall-dokku", false, "also remove Dokku itself (separate tier; prints what its uninstaller leaves behind)")
 	return cmd
 }
 

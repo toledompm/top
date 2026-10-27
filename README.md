@@ -54,3 +54,13 @@ that desired state — like Flux, but for a Dokku box instead of Kubernetes.
 Prerequisites: a dedicated Linux host (or VM) with a supported Docker +
 Dokku baseline, and a Git repository of ServiceSpecs. See
 [`docs/operations/installation.md`](docs/operations/installation.md).
+
+## Contributing
+
+Read [`AGENTS.md`](AGENTS.md) first — it carries the repo's hard rules
+(public/private boundary, the one authoritative backlog in
+`docs/tasks/backlog.md`, conventions, and the bend laws gate before any
+change to `laws/`, `internal/domain`, or `internal/plan`). New work is added
+as tasks there, not in side files; durable decisions go in
+[`docs/adr/`](docs/adr/README.md). Run `make help` to see the local gates
+(`make test`, `make vet`, `make laws`, `make hygiene`).

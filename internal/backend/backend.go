@@ -63,6 +63,45 @@ type PlatformBackend interface {
 	// ("network:exists" → "network:create") for routing.mode: internal.
 	EnsureNetwork(ctx context.Context, name string) error
 
+	// --- integrator surface (T-205..T-208, internal/install) ------------------
+	//
+	// These five methods back the installer's bootstrap deploy (ADR-0005)
+	// and its teardown counterpart. They are on the INTERFACE, never
+	// forked into a second one: the same extend-not-fork rule as the M3
+	// reconciler methods.
+
+	// DeployImage performs the one-time direct image deploy the bootstrap
+	// uses: "git:from-image <app> <imageRef>". Long-running by nature —
+	// the adapter applies the deploy timeout class to it (10 min, the
+	// installer contract's bootstrap deploy budget). Unlike the other
+	// mutating methods this is NOT no-op-safe: a failed deploy is a real
+	// failure the caller records as the bootstrap-failed marker.
+	DeployImage(ctx context.Context, ref domain.ServiceRef, imageRef string) error
+
+	// EnsureStorageEntry idempotently registers a named Dokku storage
+	// entry pointing at hostDir, without changing ownership of the host
+	// directory ("storage:info <name>" probe → "storage:create <name>
+	// <hostDir> --chown false": the host dir is TOP's own
+	// (--purge-data-managed) directory, so Dokku must not chown it).
+	EnsureStorageEntry(ctx context.Context, name, hostDir string) error
+
+	// AttachStorage mounts the named storage entry into the app's
+	// containers at containerPath ("storage:mount").
+	AttachStorage(ctx context.Context, ref domain.ServiceRef, name, containerPath string) error
+
+	// DetachStorage unmounts the named entry from the app's containers
+	// ("storage:unmount"). Tearing down an app that does not exist is a
+	// no-op success; an unmount that finds nothing is likewise a no-op
+	// (idempotent teardown, T-208).
+	DetachStorage(ctx context.Context, ref domain.ServiceRef, name, containerPath string) error
+
+	// DestroyStorageEntry removes a named Dokku storage entry that is no
+	// longer mounted anywhere ("storage:destroy <name> --force"). Caller
+	// owns the ownership proof (two-key rule); --destroy-host-dir is
+	// deliberately NOT passed — the host dir is removed by the caller's
+	// own purge-data tier, under its own confirmation.
+	DestroyStorageEntry(ctx context.Context, name string) error
+
 	// Close releases any adapter-held resources. The Dokku adapter holds
 	// none (stateless CLI invocations), so this is a back-compat hook for
 	// future backends that keep connections.

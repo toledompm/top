@@ -77,6 +77,12 @@ type FakeRunner struct {
 	prefixResps map[int]Response
 	defaultResp Response
 	nextPrefix  int
+	// seqScript support: per-prefix invocation counters + tail policy.
+	seqIdx       []int        // index into byPrefix of the scripted entry
+	seqParts     [][]Response // sequence, one element per scripted call
+	seqTails     []Response   // answer AFTER the sequence is exhausted
+	seqDone      map[int]int  // calls already served by each scripted entry
+	nextSeqEntry int
 }
 
 // NewFakeRunner returns a ready-to-use fake.
@@ -84,6 +90,7 @@ func NewFakeRunner() *FakeRunner {
 	return &FakeRunner{
 		byExact:     map[string]Response{},
 		prefixResps: map[int]Response{},
+		seqDone:     map[int]int{},
 	}
 }
 
@@ -116,6 +123,28 @@ func (f *FakeRunner) SetDefault(resp Response) {
 	f.defaultResp = resp
 }
 
+// SetScriptedPrefix registers a sequence: the first len(script) calls
+// matching the prefix receive script[0..n-1]; every later call receives
+// tail. Thread-safe; calls Counter resets only with Reset(). Example
+// (matches the shim's nth-failure injection): a dokku "apps:exists" that
+// returns exit 20 while the app is missing, 0 after the create:
+//
+//	f.SetScriptedPrefix([]string{"dokku", "apps:exists"},
+//	    []exectest.Response{{ExitCode: 20}}, exectest.Response{})
+func (f *FakeRunner) SetScriptedPrefix(prefix []string, script []Response, tail Response) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.byPrefix = append(f.byPrefix, slices.Clone(prefix))
+	f.prefixResps[f.nextPrefix] = Response{} // never used directly
+	idx := f.nextPrefix
+	f.nextPrefix++
+	f.seqIdx = append(f.seqIdx, idx)
+	f.seqParts = append(f.seqParts, append([]Response(nil), script...))
+	f.seqTails = append(f.seqTails, tail)
+	f.seqDone[idx] = 0
+	f.nextSeqEntry++
+}
+
 // Reset clears all canned responses and the call log, keeping the fake
 // reusable between table-test cases.
 func (f *FakeRunner) Reset() {
@@ -127,6 +156,11 @@ func (f *FakeRunner) Reset() {
 	f.prefixResps = map[int]Response{}
 	f.defaultResp = Response{}
 	f.nextPrefix = 0
+	f.seqIdx = nil
+	f.seqParts = nil
+	f.seqTails = nil
+	f.seqDone = map[int]int{}
+	f.nextSeqEntry = 0
 }
 
 // Recorded returns a copy of the call log, oldest first.
@@ -203,9 +237,21 @@ func (f *FakeRunner) RunStream(ctx context.Context, stdout, stderr io.Writer, na
 }
 
 func (f *FakeRunner) matchLocked(name string, args []string) Response {
-	// Prefixes last-registered-first, then exact, then default.
+	// Prefixes last-registered-first, then exact, then scripted, then
+	// default.
 	for i := f.nextPrefix - 1; i >= 0; i-- {
 		if matchesPrefix(f.byPrefix[i], name, args) {
+			// scripted entries: consume one script step, then tail.
+			for e := 0; e < len(f.seqIdx); e++ {
+				if f.seqIdx[e] == i && len(f.seqParts[e]) > 0 {
+					n := f.seqDone[i]
+					if n < len(f.seqParts[e]) {
+						f.seqDone[i] = n + 1
+						return f.seqParts[e][n]
+					}
+					return f.seqTails[e]
+				}
+			}
 			return f.prefixResps[i]
 		}
 	}

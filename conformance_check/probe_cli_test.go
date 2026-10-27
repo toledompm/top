@@ -34,8 +34,9 @@ func runTopctl(t *testing.T, args ...string) (stdout, stderr string, code int) {
 //	version → 0 (read-only)
 //	status  → 0 (read-only)
 //	install without --confirm, non-TTY → 2 (usage: it needs its gate)
-//	uninstall --confirm → 3 (operation "failed": stub cannot mutate — the
-//	  invocation was well formed, so never 2)
+//	uninstall --confirm → 1 (T-208: the body is real; on a test host there
+//	  is no <dataDir>/top.db record, and "no TOP state found" is the
+//	  findings/drift exit — the invocation was well formed, so never 2)
 //	unknown command → 2 (usage)
 func TestCLIExitCodeContractSpotChecks(t *testing.T) {
 	cases := []struct {
@@ -46,7 +47,7 @@ func TestCLIExitCodeContractSpotChecks(t *testing.T) {
 		{"version", []string{"version"}, cli.ExitOK},
 		{"status", []string{"status"}, cli.ExitOK},
 		{"install-unconfirmed", []string{"install", "github.com/example/top"}, cli.ExitUsage},
-		{"uninstall-confirmed", []string{"uninstall", "--confirm"}, cli.ExitFailed},
+		{"uninstall-confirmed-no-state", []string{"uninstall", "--confirm"}, cli.ExitDrift},
 		{"unknown-command", []string{"frobnicate"}, cli.ExitUsage},
 	}
 	for _, tc := range cases {

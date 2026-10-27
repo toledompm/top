@@ -131,7 +131,7 @@ func checkControllerApps(r *Report, ctx context.Context, opts Options, apps []st
 	}
 
 	status, okStatus := psReportState(r, ctx, opts, app)
-	unhealthy := okStatus && !(status.deployed && status.running)
+	unhealthy := okStatus && (!status.deployed || !status.running)
 	logLines, logOK := controllerLogs(r, ctx, opts, app, unhealthy)
 	failedDeploys(r, ctx, opts, app)
 
@@ -306,7 +306,7 @@ func checkStore(r *Report, ctx context.Context, opts Options, controllerPresent 
 		if errors.As(err, &corrupt) {
 			fail(r, "store/integrity", "state store integrity ("+varSchema+")",
 				fmt.Sprintf("%s: PRAGMA integrity_check failed: %s", path, excerpt(corrupt.Error())),
-				fmt.Sprintf("restore from the newest verified backup (`topctl backup list`; `topctl recover restore` lands in M5 — the safeguards come first, ADR-0007); record which integrity failure occurred"))
+				"restore from the newest verified backup (`topctl backup list`; `topctl recover restore` lands in M5 — the safeguards come first, ADR-0007); record which integrity failure occurred")
 			return
 		}
 		fail(r, "store/integrity", "state store integrity ("+varSchema+")",

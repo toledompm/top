@@ -19,6 +19,7 @@ package dokku
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -351,7 +352,7 @@ func (c *Client) Stop(ctx context.Context, ref domain.ServiceRef) error {
 // well-formed TOP app name and never destroys anything else. An app that
 // does not exist is a no-op success.
 func (c *Client) Destroy(ctx context.Context, ref domain.ServiceRef) error {
-	ref, app, err := resolve(ref)
+	_, app, err := resolve(ref)
 	if err != nil {
 		return err
 	}
@@ -394,6 +395,128 @@ func (c *Client) EnsureNetwork(ctx context.Context, name string) error {
 
 // Close implements backend.PlatformBackend; the CLI adapter holds nothing.
 func (c *Client) Close() error { return nil }
+
+// --- integrator surface (T-205..T-208, internal/install) --------------------
+
+// deployTimeout is the deploy-time class of platform-backend.md's error
+// semantics: image deploys are the long pole of any operation. 10 minutes
+// is the installer contract's bootstrap-deploy budget (ADR-0005 slice,
+// T-206); M3's Apply reuses the same class.
+const deployTimeout = 10 * time.Minute
+
+// DeployImage implements backend.PlatformBackend: "git:from-image <app>
+// <imageRef>" (docker-image deployment docs) under the deploy timeout
+// class. The deploy is idempotent-safe to re-run (a re-run redeploys the
+// same image), but exit-nonzero means a real failure — the installer
+// records it as the bootstrap-failed marker.
+func (c *Client) DeployImage(ctx context.Context, ref domain.ServiceRef, imageRef string) error {
+	_, app, err := resolve(ref)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(imageRef) == "" {
+		return wrapBackend("deploy image", app, fmt.Errorf("%w: empty image ref", domain.ErrInvalid))
+	}
+	_, err = c.run(ctx, "deploy image", app, deployTimeout, "git:from-image", app, imageRef)
+	return err
+}
+
+// EnsureStorageEntry implements backend.PlatformBackend: "storage:info
+// <name>" (dokku.com persistent-storage docs, 0.38+: named entries) →
+// "storage:create <name> <hostDir> --chown false". The --chown false the
+// contract wants: TOP's hostDir is installer-managed (0700, purge-data
+// tier) — Dokku must not take ownership of it.
+// A storage:info exit-status failure means "absent"; any other error class
+// (timeout, missing binary) surfaces.
+func (c *Client) EnsureStorageEntry(ctx context.Context, name, hostDir string) error {
+	if !validStorageName(name) {
+		return wrapBackend("ensure storage entry", name, fmt.Errorf("%w: storage entry name %q must be a DNS-1123 label (dokku storage docs)", domain.ErrInvalid, name))
+	}
+	if _, serr := c.run(ctx, "ensure storage entry", name, readTimeout, "storage:info", name); serr == nil {
+		return nil // entry exists
+	} else if !exec.IsExitCode(serr, 1) {
+		return serr
+	}
+	_, cerr := c.run(ctx, "ensure storage entry", name, mutateTimeout, "storage:create", name, hostDir, "--chown", "false")
+	return cerr
+}
+
+// AttachStorage implements backend.PlatformBackend: mount a named storage
+// entry into the app at containerPath — "storage:mount <app> <name>
+// --container-dir <containerPath>" (the named-entry form; the legacy
+// host:container colon form stays out of this adapter so every deploy
+// anchor is a dokku-tracked entry).
+func (c *Client) AttachStorage(ctx context.Context, ref domain.ServiceRef, name, containerPath string) error {
+	_, app, err := resolve(ref)
+	if err != nil {
+		return err
+	}
+	if !validStorageName(name) {
+		return wrapBackend("attach storage", app, fmt.Errorf("%w: storage entry name %q must be a DNS-1123 label", domain.ErrInvalid, name))
+	}
+	if !strings.HasPrefix(containerPath, "/") {
+		return wrapBackend("attach storage", app, fmt.Errorf("%w: container path %q must be absolute (dokku storage docs)", domain.ErrInvalid, containerPath))
+	}
+	_, err = c.run(ctx, "attach storage", app, mutateTimeout, "storage:mount", app, name, "--container-dir", containerPath)
+	return err
+}
+
+// DetachStorage implements backend.PlatformBackend: "storage:unmount <app>
+// <name> --container-dir <containerPath>". No-op-safe when the app is
+// gone or the mounts are absent: idempotent teardown per T-208.
+func (c *Client) DetachStorage(ctx context.Context, ref domain.ServiceRef, name, containerPath string) error {
+	_, app, err := resolve(ref)
+	if err != nil {
+		return err
+	}
+	exists, err := c.existsApp(ctx, "detach storage", app)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil // nothing mounted anywhere; apps:destroy already cleaned it
+	}
+	_, err = c.run(ctx, "detach storage", app, mutateTimeout, "storage:unmount", app, name, "--container-dir", containerPath)
+	// "no-op rather than an error" per the 0.38 docs for scope-less
+	// unmounts; tolerate the nothing-attached exit like the exists probe.
+	if err != nil && exec.IsExitCode(err, 1) {
+		return nil
+	}
+	return err
+}
+
+// DestroyStorageEntry implements backend.PlatformBackend: "storage:destroy
+// <name> --force". The host dir backing the entry is deliberately left
+// alone here: purge-data removes it topctl-side with its own confirmation
+// (ADR-0009 teardown tiers) — see the interface doc.
+func (c *Client) DestroyStorageEntry(ctx context.Context, name string) error {
+	if _, err := c.run(ctx, "destroy storage entry", name, mutateTimeout, "storage:destroy", name, "--force"); err != nil {
+		// Missing entries are fine on re-run (idempotent teardown).
+		if exec.IsExitCode(err, 1) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// validStorageName is dokku's DNS-1123-label constraint on entry names.
+func validStorageName(name string) bool {
+	if name == "" || len(name) > 45 {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		b := name[i]
+		ok := b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-'
+		if b == '-' && (i == 0 || i == len(name)-1) {
+			return false
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
 
 // firstNonEmpty returns the first non-empty string.
 func firstNonEmpty(ss ...string) string {

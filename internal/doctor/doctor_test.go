@@ -324,10 +324,14 @@ func TestCheckPortsFake(t *testing.T) {
 		wantSev map[string]Severity
 	}{
 		{"both-free", nil, false, map[string]Severity{"ports/80": SeverityOK, "ports/443": SeverityOK}},
-		{"both-occupied", func(port string) error { return errInUse }, false,
-			map[string]Severity{"ports/80": SeverityWarn, "ports/443": SeverityWarn}},
-		{"priv-bound", func(port string) error { return errPermission }, false,
-			map[string]Severity{"ports/80": SeverityWarn, "ports/443": SeverityWarn}},
+		{
+			"both-occupied", func(port string) error { return errInUse }, false,
+			map[string]Severity{"ports/80": SeverityWarn, "ports/443": SeverityWarn},
+		},
+		{
+			"priv-bound", func(port string) error { return errPermission }, false,
+			map[string]Severity{"ports/80": SeverityWarn, "ports/443": SeverityWarn},
+		},
 		{"skipped", nil, true, map[string]Severity{"ports/skipped": SeverityInfo}},
 	}
 	for _, tc := range tests {
@@ -388,8 +392,10 @@ func TestCheckResourcesTable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			r := Report{}
-			opts := Options{DataDir: "/some/anchor", MemProbe: func() (uint64, error) { return tc.mem, tc.memErr },
-				DiskProbe: func(string) (uint64, error) { return tc.disk, nil }}
+			opts := Options{
+				DataDir: "/some/anchor", MemProbe: func() (uint64, error) { return tc.mem, tc.memErr },
+				DiskProbe: func(string) (uint64, error) { return tc.disk, nil },
+			}
 			opts.applyDefaults()
 			r.checkResources(opts)
 			for id, sev := range tc.wantIDsSev {

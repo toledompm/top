@@ -81,7 +81,23 @@ is controlled by the package map above plus `go vet`/lint in CI.
   no shell string interpolation (argv slices only), and secret redaction.
 - Domain + plan packages are pure and get high unit-test coverage targets.
 
+## Amendment (M2, 2026-10-27): the recovery/bootstrap carve-out
+
+`internal/backend/dokku` remains the only place that *builds Dokku argv*
+in normal operation, with one documented exception pair: the
+install/bootstrap path (`internal/install` phase 2, pre-backend
+bootstrap — ADR-0005: "small, deterministic, separate from the
+reconciliation loop") and the independent recovery path
+(`internal/recover` — must work when TOP is down). Both exec the `dokku`
+CLI directly through the shared `internal/exec` seam; the exception is
+structural because the backend assumes an operating TOP.
+`internal/inventory` reads dokku/docker state directly for the same
+bootstrap reason. Argv command facts may live in three packages by
+design — any change to phase-2/recover verbs must mirror the adapter's
+command conventions and document itself in the package READMEs.
+
 ## Open questions
 
-- None significant; package list will be confirmed against contracts in
-  Milestone 1 review.
+- None significant; package list was confirmed against contracts in the
+  Milestone 1 review; the M2 carve-out above is the layout's first real
+  amendment.

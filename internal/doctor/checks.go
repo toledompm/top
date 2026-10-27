@@ -38,7 +38,7 @@ func (r *Report) checkOS(opts Options) {
 	default:
 		r.fail("os/os", "operating system",
 			fmt.Sprintf("operating system %q is not supported (want linux; %q build detected)", goos, runtime.GOOS),
-			fmt.Sprintf("build topctl for linux (amd64/arm64) and run it on Ubuntu 22.04/24.04/26.04 or Debian 11+"))
+			"build topctl for linux (amd64/arm64) and run it on Ubuntu 22.04/24.04/26.04 or Debian 11+")
 	}
 }
 
@@ -262,8 +262,8 @@ func (r *Report) checkNames(apps []string, opts Options) {
 	}
 	collided := false
 	for _, app := range apps {
-		switch {
-		case app == ControllerAppName:
+		switch app {
+		case ControllerAppName:
 			collided = true
 			r.fail("names/top-controller", "TOP-reserved app names",
 				fmt.Sprintf("a Dokku app named %q already exists on this host", ControllerAppName),
@@ -350,8 +350,8 @@ func (r *Report) checkResources(opts Options) {
 	// existing ancestor (state dir doesn't exist pre-install).
 	anchor := anchorDir(opts.DataDir)
 	free, err := opts.DiskProbe(anchor)
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		gib := free >> 30
 		switch {
 		case gib >= 20:
@@ -374,8 +374,8 @@ func (r *Report) checkResources(opts Options) {
 
 	// RAM.
 	total, err := opts.MemProbe()
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		gib := total >> 30
 		switch {
 		case gib >= 4:

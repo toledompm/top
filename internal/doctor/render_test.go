@@ -12,12 +12,18 @@ import (
 func findingFixture() []Finding {
 	return []Finding{
 		{ID: "os/distro", Severity: SeverityOK, Check: "operating system distribution", Message: "ubuntu 24.04 is a supported distribution"},
-		{ID: "dokku/state", Severity: SeverityInfo, Check: "dokku present", Message: "dokku is not installed; TOP can install it (approval-gated)",
-			Hint: "re-run `topctl install --install-dokku` to install via the documented bootstrap"},
-		{ID: "resources/disk", Severity: SeverityWarn, Check: "disk headroom", Message: "12 GiB free on /; below the 20 GiB recommended headroom",
-			Hint: "free space or expect tuning"},
-		{ID: "docker/daemon", Severity: SeverityFail, Check: "docker daemon reachable", Message: "docker is installed but the daemon is not reachable (exit 1)",
-			Hint: "on a host distro: `sudo systemctl start docker`"},
+		{
+			ID: "dokku/state", Severity: SeverityInfo, Check: "dokku present", Message: "dokku is not installed; TOP can install it (approval-gated)",
+			Hint: "re-run `topctl install --install-dokku` to install via the documented bootstrap",
+		},
+		{
+			ID: "resources/disk", Severity: SeverityWarn, Check: "disk headroom", Message: "12 GiB free on /; below the 20 GiB recommended headroom",
+			Hint: "free space or expect tuning",
+		},
+		{
+			ID: "docker/daemon", Severity: SeverityFail, Check: "docker daemon reachable", Message: "docker is installed but the daemon is not reachable (exit 1)",
+			Hint: "on a host distro: `sudo systemctl start docker`",
+		},
 	}
 }
 

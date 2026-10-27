@@ -1,8 +1,12 @@
 # Recovering TOP
 
-> Status: **draft** — target behavior (Milestones 2/5). The guiding rule:
-> **recovery never depends on TOP being healthy.** Everything here runs from
-> the host terminal using only Dokku, the filesystem, and the SQLite file.
+> Status: **partially real (M2)** — `topctl recover diagnose` is fully real
+> and read-only; `restart` and `redeploy` work (minimal, same independence);
+> `restore` is scaffold-only: it **explicitly refuses** (exit 3,
+> "restore is deferred to M5") until T-503 lands the ADR-0007 safeguard
+> order. The guiding rule: **recovery never depends on TOP being healthy.**
+> Everything here runs from the host terminal using only Dokku, the
+> filesystem, and the SQLite file.
 
 ## First: is anything actually wrong with your apps?
 
@@ -25,7 +29,7 @@ topctl recover redeploy           # redeploy controller at last-known-good
 topctl recover restore --backup /var/lib/top/backups/top-2026-10-27T0300.db
 ```
 
-`restore` safeguards: controller must be stopped (it stops it); refuses to
+`restore` (M5): controller must be stopped (it stops it); refuses to
 overwrite a newer database without `--force`; snapshots the current DB first;
 runs migrations forward; restarts and verifies health.
 

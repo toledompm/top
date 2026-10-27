@@ -49,6 +49,15 @@ func NewRoot(opts Options) *cobra.Command {
 	pf.StringP("output", "o", string(FormatText), "output format: text or json (agents use json)")
 	pf.String("config", "", "path to top-config.yaml (default: defaults + TOP_* env)")
 	pf.String("redact", "on", "secret redaction mode; reserved: only `on` is accepted")
+	// ADR-0009's gate/dry-run vocabulary is a GLOBAL flag surface: declaring
+	// them on the root avoids cobra's legacy interspersed-flags trap, in
+	// which a subcommand-local flag seen before the subcommand is mistaken
+	// for one that takes a value at the root level (that swallowed
+	// `install` and turned the repo URL into the command). Per-command
+	// GATING is still enforced in each command's body; these are only the
+	// flag declarations.
+	pf.Bool("confirm", false, "non-interactive approval for gated commands (ADR-0009)")
+	pf.Bool("dry-run", false, "print the plan without executing (mutating commands)")
 	pf.String("schema-version", fmt.Sprintf("%d", JSONSchemaVersion),
 		"output schema negotiation; reserved: only the current schemaVersion is accepted")
 

@@ -30,8 +30,9 @@ func runCLI(t *testing.T, stdinIsTTY bool, stdin string, args ...string) (string
 type stringsBuffer struct{ strings.Builder }
 
 // TestExitCodeContract pins the exit-code column of docs/contracts/cli.md
-// against every command class while it is a stub: read-only → 0, mutating
-// → 3 (the operation cannot succeed today), invalid usage/validation → 2.
+// against every command class: read-only → 0; mutating stubs → 3 (the
+// operation cannot succeed today); install/uninstall are REAL (T-205/
+// T-208) and pin their validation/no-state rows; invalid usage → 2.
 func TestExitCodeContract(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -48,9 +49,15 @@ func TestExitCodeContract(t *testing.T) {
 		{"backup-verify", []string{"backup", "verify"}, ExitOK},
 		{"version", []string{"version"}, ExitOK},
 
-		// mutating stubs → 3 (invocation is well formed; the gap is the tool)
-		{"install-confirmed", []string{"install", "github.com/example/top", "--confirm"}, ExitFailed},
-		{"uninstall-confirmed", []string{"uninstall", "--confirm"}, ExitFailed},
+		// T-205..T-208: `install`/`uninstall` bodies are real now (the
+		// phased installer / ownership-safe teardown, internal/install).
+		// Their host-faked behavior tests live in internal/install and
+		// internal/cli/install_test.go; THIS table stays machine-
+		// independent, so the rows here pin only the usage surface
+		// (repo shape → 2) and the default-datadir no-state stop (1,
+		// the findings space — deterministic on hosts without root).
+		{"install-bad-repo", []string{"install", "github.com/example/top", "--confirm"}, ExitUsage},
+		{"uninstall-no-state", []string{"uninstall", "--confirm"}, ExitDrift},
 		{"reconcile", []string{"reconcile"}, ExitFailed},
 		{"deploy", []string{"deploy", "core/prometheus"}, ExitFailed},
 		{"backup-create-confirmed", []string{"backup", "create", "--confirm"}, ExitFailed},
@@ -171,13 +178,15 @@ func TestHelpMentionsTopctl(t *testing.T) {
 // TestConfirmPromptPaths: both branches of the confirm gate, driven with
 // captured stdio and forced TTY (see runCLI note — no PTY harness needed).
 func TestConfirmPromptPaths(t *testing.T) {
-	// TTY forced → prompt offered; "y" consents; gated stub then exits 3.
-	stdout, _, code := runCLI(t, true, "y\n", "install", "github.com/example/top")
-	if code != ExitFailed {
-		t.Fatalf("consented install: exit = %d, want %d", code, ExitFailed)
+	// TTY forced → prompt offered; "y" consents; the (real, T-205)
+	// install step then rejects the non-URL repo argument (exit 2).
+	// ("a.cfg" placeholder-free note: repo-shape validation is CLI-level.)
+	installStdout, _, code := runCLI(t, true, "y\n", "install", "github.com/example/top")
+	if code != ExitUsage {
+		t.Fatalf("consented install: exit = %d, want %d", code, ExitUsage)
 	}
-	if !strings.Contains(stdout, "Proceed? [y/N]") {
-		t.Fatalf("consented install: prompt missing, stdout:\n%s", stdout)
+	if !strings.Contains(installStdout, "Proceed? [y/N]") {
+		t.Fatalf("consented install: prompt missing, stdout:\n%s", installStdout)
 	}
 
 	// Prompt declined → failed authorization (usage exit), never success.
@@ -193,12 +202,14 @@ func TestConfirmPromptPaths(t *testing.T) {
 	}
 
 	// --confirm short-circuits the prompt; nothing asks on a TTY either.
-	stdout, _, code = runCLI(t, true, "", "install", "github.com/example/top", "--confirm")
-	if code != ExitFailed {
-		t.Fatalf("--confirm install: exit = %d, want %d", code, ExitFailed)
+	// The (real, T-205) install step then rejects the non-URL repo
+	// argument — exit 2, usage class.
+	confirmStdout, _, code := runCLI(t, true, "", "install", "github.com/example/top", "--confirm")
+	if code != ExitUsage {
+		t.Fatalf("--confirm install: exit = %d, want %d", code, ExitUsage)
 	}
-	if strings.Contains(stdout, "Proceed?") {
-		t.Fatalf("--confirm must not prompt; stdout:\n%s", stdout)
+	if strings.Contains(confirmStdout, "Proceed?") {
+		t.Fatalf("--confirm must not prompt; stdout:\n%s", confirmStdout)
 	}
 }
 

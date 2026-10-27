@@ -1,0 +1,55 @@
+# internal/install — phased installer, bootstrap deploy, and teardown
+
+Purpose: `topctl install <repo>` and `topctl uninstall` — the only
+entrypoints that put TOP *on* a host or *off* it. Contract:
+[`docs/contracts/installer.md`](../../docs/contracts/installer.md);
+decisions: [ADR-0005](../../docs/adr/0005-bootstrap-self-management-recovery.md)
+(bootstrap toplogy, human-gated self-update),
+[ADR-0009](../../docs/adr/0009-host-ownership-safeguards.md) (ownership +
+approval gates). TOP's *own* configuration lives in `internal/config`;
+reconciliation never runs from this package (that's the M3 controller).
+
+## Phases (implemented)
+
+| Phase | Contents | Gate |
+| --- | --- | --- |
+| 0-preflight | `internal/doctor.Run` + installer-specific checks (repo URL shape, deploy-key file visibility) — aborts before any mutation | read-only |
+| 1-inventory | `internal/inventory.Snapshot` + `CreateLedgerFromSnapshot` — the pre-existing host state is ON RECORD before TOP creates anything | read-only |
+| 2-dokku-setup | verify Dokku presence/health/version (≥ 0.38); `--install-dokku` runs the upstream bootstrap — `--confirm` required; sudo is *printed, never escalated* (ADR-0009) | mutating, gated |
+| 3-platform-wiring | create `$dataDir/{,secrets,git,backups}` (dirs 0700, files 0600), `EnsureNetwork(top-internal)`, deploy-key + pinned known_hosts into `$dataDir/git/` | mutating, gated |
+| 4-bootstrap-deploy | storage entry + mount for SQLite (`top-metadata`) → app `core-top-controller` ← pinned image (`--controller-image/--controller-tag`, defaults `ghcr.io/example/top/topctl:bootstrap-pinned`-format), bounded health wait; ledger marks `bootstrap-owned` | mutating, gated |
+| 5-report | created/adopted/left-alone + secrets-to-provision + next commands; exits 0 | read-only |
+
+Teardown tiers (`topctl uninstall`): everything is **kept by default**;
+`--purge-data`, `--purge-secrets`, `--uninstall-dokku` each add their own
+tier, each with its own confirmation (no yes-to-everything — ADR-0009).
+Deletions follow the **two-key rule** via
+`internal/inventory.Deletable` (ledger state ∧ fresh label/prefix re-read)
+— foreign resources are reported in the final diff and never touched
+(acceptance test 11).
+
+## Guarances tested here
+
+- **dry-run zero-mutation**: `--dry-run` prints the full plan and runs no
+  mutating verb (asserted on the call log + fs diff).
+- **idempotent resume**: an interrupted install (kill mid-phase-4, or a
+  failed bootstrap with the `bootstrap-failed` ledger marker) re-runs to
+  completion; completed phases are skipped via the operations records.
+- **gate matrix**: non-TTY without `--confirm` → exit 2 with the exact
+  guidance; `sudo` missing/password-required → the exact `sudo` command is
+  printed and nothing more happens.
+
+## Known fences for later milestones
+
+- **Repo creation (`--init`)** is T-212/M3 — a missing platform repo is a
+  clean preflight error today (ADR-0005's no-init rule).
+- **First reconciliation / adoption** (contract phase 5) lands M3/M4: until
+  then the bootstrap deployment stays `bootstrap-owned`.
+- Deploy-key *generation* (vs operator-supplied) is M3.
+- Controller self-deploy gating is T-406/M4 (never auto-applied — ADR-0005).
+- The bootstrap deploy's e2e (real Dokku via the tier-3 harness) is wired
+  in `internal/backend/dokku/integrator_test.go`; CI runs tiers 1–2 only.
+
+Testing tiers: FakeRunner golden-argv per phase + full-sequence
+integration over temp SQLite; **no real Dokku in this package's default
+tests** — never point fixtures at a shared host.
