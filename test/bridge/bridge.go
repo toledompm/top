@@ -236,15 +236,6 @@ func (a jchg) less(b jchg) bool {
 	}
 	return false
 }
-func (a jent) less(b jent) bool {
-	if a.NS != b.NS {
-		return a.NS < b.NS
-	}
-	if a.Name != b.Name {
-		return a.Name < b.Name
-	}
-	return a.Kind < b.Kind
-}
 
 // kindOf maps a Go ChangeKind to the model's emitted string.
 func kindOf(k domain.ChangeKind) (string, error) {

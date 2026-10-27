@@ -89,7 +89,7 @@ func (s *Store) ListLedger(ctx context.Context, kind string) ([]*store.Resource,
 	if err != nil {
 		return nil, classify("list ledger", err, "")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := []*store.Resource{}
 	for rows.Next() {
@@ -165,7 +165,7 @@ func (s *Store) ListBackups(ctx context.Context) ([]*store.Backup, error) {
 	if err != nil {
 		return nil, classify("list backups", err, "")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := []*store.Backup{}
 	for rows.Next() {

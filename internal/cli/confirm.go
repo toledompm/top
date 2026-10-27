@@ -62,7 +62,7 @@ func (c *cctx) requireConfirm(cmd *cobra.Command, action string) error {
 // proceeds; anything else is a usage failure ("failed to authorize", not
 // a crash or a silent skip).
 func (c *cctx) promptConfirm(cmd *cobra.Command, action string) error {
-	fmt.Fprintf(c.out, "topctl %s: %s. Proceed? [y/N] ", invocation(cmd), action)
+	_, _ = fmt.Fprintf(c.out, "topctl %s: %s. Proceed? [y/N] ", invocation(cmd), action)
 	answer, _ := bufio.NewReader(c.stdin).ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(answer)) {
 	case "y", "yes":

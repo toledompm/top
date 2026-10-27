@@ -16,7 +16,7 @@ func main() {
 		rest := strings.Join(os.Args[2:], " ")
 		fmt.Fprintln(os.Stderr, rest)
 		if os.Args[1] == "-fail" {
-			fmt.Fprintln(os.Stdout, rest)
+			_, _ = fmt.Fprintln(os.Stdout, rest)
 			os.Exit(1)
 		}
 		return

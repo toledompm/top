@@ -45,9 +45,7 @@ func SynthesizeObserved(d domain.Service) domain.ObservedState {
 	for _, ref := range d.SecretRefs {
 		o.SecretChecksums[ref] = "sha256:example-checksum-" + ref
 	}
-	for _, p := range d.Ports {
-		o.Ports = append(o.Ports, p)
-	}
+	o.Ports = append(o.Ports, d.Ports...)
 	if d.Routing.Mode == domain.RoutingProxy {
 		o.Domains = append([]string(nil), d.Routing.Domains...)
 	}

@@ -14,6 +14,6 @@ import (
 func main() {
 	env := os.Environ()
 	sort.Strings(env)
-	fmt.Fprint(os.Stdout, strings.Join(env, "\n"))
-	fmt.Fprintln(os.Stdout)
+	_, _ = fmt.Fprint(os.Stdout, strings.Join(env, "\n"))
+	_, _ = fmt.Fprintln(os.Stdout)
 }

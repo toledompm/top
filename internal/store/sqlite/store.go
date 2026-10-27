@@ -139,7 +139,7 @@ func (s *Store) ListOperations(ctx context.Context, limit int, filter *store.Ope
 	if err != nil {
 		return nil, classify("list operations", err, "")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	ops := []*domain.Operation{}
 	for rows.Next() {

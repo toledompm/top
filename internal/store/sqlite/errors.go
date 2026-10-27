@@ -55,7 +55,7 @@ func upstreamClass(err error, what string) (error, bool) {
 	if errors.As(err, &serr) {
 		code := serr.Code() & codeClassMask
 		switch {
-		case code == sqlite3.SQLITE_BUSY || code == sqlite3.SQLITE_LOCKED:
+		case code == sqlite3.SQLITE_BUSY || code == sqlite3.SQLITE_LOCKED: //nolint:staticcheck // QF1002: if/else ladder mirrors the driver's own table
 			return domain.LockedError{
 				Lease:  firstNonEmpty(what, "writer"),
 				Holder: "unknown writer (SQLITE_BUSY persisted past busy_timeout)",

@@ -27,7 +27,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	// cwd of a go test run is this package's dir; the module root is two up.
 	root := "../.."
 	for name, dest := range map[string]string{

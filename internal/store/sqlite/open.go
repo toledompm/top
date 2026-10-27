@@ -69,7 +69,7 @@ func Open(ctx context.Context, path string) (store.Store, error) {
 	db.SetConnMaxLifetime(0)
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, classify("open state store (ping "+path+")", err, "")
 	}
 
@@ -77,11 +77,11 @@ func Open(ctx context.Context, path string) (store.Store, error) {
 	// table means a fresh database (version 0).
 	current, err := appliedVersion(ctx, db)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	if current > SchemaVersionMax {
-		db.Close()
+		_ = db.Close()
 		return nil, store.SchemaNewerError{Current: current, Known: SchemaVersionMax}
 	}
 
@@ -89,11 +89,11 @@ func Open(ctx context.Context, path string) (store.Store, error) {
 	// failure aborts startup loudly — no silent auto-rollback (ADR-0007).
 	provider, err := goose.NewProvider(goose.DialectSQLite3, db, migrations)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("open state store: build migration provider: %w", err)
 	}
 	if _, err := provider.Up(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("open state store (migrate): %w", classify("migrate", err, ""))
 	}
 

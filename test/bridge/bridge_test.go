@@ -69,28 +69,42 @@ func TestBridgeConvergedNoop(t *testing.T) {
 func TestBridgeDivergenceTable(t *testing.T) {
 	binary := findBend(t)
 	cases := map[string]redcase{
-		"rev-drift": {D: []redsvc{{NS: 1, Name: 1, Img: 3}},
+		"rev-drift": {
+			D:    []redsvc{{NS: 1, Name: 1, Img: 3}},
 			Q:    []redobs2{{NS: 1, Name: 1, Obs: &redobs{Img: 8, EnvN: nil, Seu: nil}}},
-			Self: nil, Prune: false},
-		"rev-plus": {D: []redsvc{{NS: 1, Name: 2, Img: 1}},
+			Self: nil, Prune: false,
+		},
+		"rev-plus": {
+			D:    []redsvc{{NS: 1, Name: 2, Img: 1}},
 			Q:    []redobs2{{NS: 1, Name: 2, Obs: &redobs{Img: -1}}},
-			Self: nil, Prune: false},
-		"build-ref-create": {D: []redsvc{{NS: 2, Name: 1, Img: -1}},
+			Self: nil, Prune: false,
+		},
+		"build-ref-create": {
+			D:    []redsvc{{NS: 2, Name: 1, Img: -1}},
 			Q:    []redobs2{{NS: 2, Name: 1, Obs: nil}},
-			Self: nil, Prune: false},
-		"env-add": {D: []redsvc{{NS: 1, Name: 1, Img: 3, Env: []pe{{1, 5}}}},
+			Self: nil, Prune: false,
+		},
+		"env-add": {
+			D:    []redsvc{{NS: 1, Name: 1, Img: 3, Env: []pe{{1, 5}}}},
 			Q:    []redobs2{{NS: 1, Name: 1, Obs: &redobs{Img: 3}}},
-			Self: nil, Prune: false},
-		"secret-add": {D: []redsvc{{NS: 1, Name: 1, Img: 3, Sek: []int{2}}},
+			Self: nil, Prune: false,
+		},
+		"secret-add": {
+			D:    []redsvc{{NS: 1, Name: 1, Img: 3, Sek: []int{2}}},
 			Q:    []redobs2{{NS: 1, Name: 1, Obs: &redobs{Img: 3}}},
-			Self: nil, Prune: false},
-		"secret-unresolvable": {D: []redsvc{{NS: 1, Name: 1, Img: 3, Sek: []int{2}}},
+			Self: nil, Prune: false,
+		},
+		"secret-unresolvable": {
+			D:    []redsvc{{NS: 1, Name: 1, Img: 3, Sek: []int{2}}},
 			Q:    []redobs2{{NS: 1, Name: 1, Obs: &redobs{Img: 3, EnvN: []int{2}}}},
-			Self: nil, Prune: false},
-		"self-drift": {D: []redsvc{{NS: 0, Name: 2, Img: 4}},
+			Self: nil, Prune: false,
+		},
+		"self-drift": {
+			D:     []redsvc{{NS: 0, Name: 2, Img: 4}},
 			Q:     []redobs2{{NS: 0, Name: 2, Obs: &redobs{Img: 9}}},
 			Self:  []redref{{NS: 0, Name: 2}},
-			Prune: false},
+			Prune: false,
+		},
 	}
 	for name, c := range cases {
 		runCase(t, binary, name, c)
