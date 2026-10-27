@@ -1,6 +1,6 @@
 # 0015 — Bend laws: formal invariants for the pure core (PROTOTYPE)
 
-- Status: proposed (prototype delivered; owner verdict pending)
+- Status: **accepted** (2026-10-27, owner approval; open questions resolved)
 - Date: 2026-10-27
 - Deciders: owner + orchestrator
 - Toolchain: bend v2.0.39 (installed locally via the official installer)
@@ -73,10 +73,10 @@ reduced-surface quantifier workarounds are honest patches recorded in
   `LAWS.bend`, prove it OR fold it back into a property test (recorded in
   the law table); never leave a law open in a merged commit.
 
-## Open questions
+## Resolved owner decisions (2026-10-27)
 
-- Should the differential bridge (when bend exists) gate releases in CI,
-  or stay an additional non-required job? Proposal: separate optional CI
-  job now, release-gating after Milestone 3 (when ObservedState extends
-  and the bridge covers more of Compute).
+- The differential bridge ships as a separate optional CI job now
+  (installs the pinned bend release; graceful skip when absent locally);
+  it becomes *release-gating* after Milestone 3, when ObservedState
+  extends and the bridge covers more of Compute.
 - GPU/CUDA CI: never required for v0 laws (CPU mode suffices).

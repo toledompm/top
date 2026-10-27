@@ -47,3 +47,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: ./test/hygiene.sh
+
+  # T-113 / ADR-0015: optional law gate (proofs + differential bridge).
+  # Fork-safe; graceful-skip semantics live in the Makefile target.
+  laws:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: curl -fsSL https://bend-lang.com/install.sh | sh
+      - run: make laws
