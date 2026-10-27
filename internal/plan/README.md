@@ -11,6 +11,14 @@ ADR-0005 (controller self-service is report-only), ADR-0008 (secrets are
 names/checksums, never values). Output vocabulary:
 `internal/domain` (`ServicePlan`, `FieldChange`, `ChangeKind`).
 
+## Test-support API
+
+`SynthesizeObserved(d domain.Service) domain.ObservedState`
+(`synthesize.go`, exported for **T-111's conformance_check** to reuse): the
+observed-state synthesizer below, shared with internal/plan's invariant
+tests. It is deliberately not reconciler API — test-support only, and it
+mirrors the platform-backend Inspect contract, not Compute's internals.
+
 ## API
 
 ```go
@@ -21,7 +29,7 @@ WithPruneAllowed(bool) Option  // default false — prune is never implicit
 WithSelfService(domain.ServiceRef) Option // marks the controller service (drifted(self))
 ```
 
-- `Compute` is pure and errorless (both inputs are already validated
+| `Compute` is pure and errorless (both inputs are already validated
   upstream): absent observed ⇒ `create`; empty diff ⇒ `noop`; otherwise
   `update` (or `drifted(self)` when the service is the controller).
 - `ComputeAll` delegates per service; a **missing observed entry means
