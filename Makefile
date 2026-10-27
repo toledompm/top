@@ -5,13 +5,19 @@
 BINARY := topctl
 GO     ?= go
 
-.PHONY: build test vet fmt lint hygiene clean
+.PHONY: build test vet fmt lint hygiene test-shim clean
 
 build:
 	CGO_ENABLED=0 $(GO) build -o $(BINARY) ./cmd/topctl
 
 test:
 	$(GO) test ./... -race -count=1
+
+# Tier 2 (ADR-0012): shim integration tests, guarded by the `toptests` build
+# tag so they stay out of `test` and CI's `go test ./...`. Exercises the
+# exec.Runner seam against a fake dokku script on PATH — see test/shim/README.md.
+test-shim:
+	$(GO) test -tags toptests ./test/fakeexec ./test/shim -race -count=1
 
 vet:
 	$(GO) vet ./...

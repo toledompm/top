@@ -1,0 +1,28 @@
+# Canned responses for the tier-2 dokku shim (ADR-0012), covering the
+# representative dokku subcommands from docs/contracts/platform-backend.md.
+#
+# All values are fictional (top-test-app, ghcr.io/example/...) — ADR-0014.
+# `exit` defaults to 0. The secret token below exists so the tier-2
+# integration test can prove redaction across a real child process.
+- name: dokku
+  args: [apps:list, --format, json]
+  stdout: |
+    ["top-test-app"]
+- name: dokku
+  args: [ps:report, top-test-app, --format, json]
+  stdout: |
+    {"App":"top-test-app","Deployed":true,"Running":true,
+     "Status":"running (CID: 000000000000)",
+     "ConfigKeys":["EXAMPLE_TOKEN","TZ"],
+     "ExampleTokenValue":"s3cr3t-top-value-7731",
+     "Image":"ghcr.io/example/top-test-app:1.2.3"}
+- name: dokku
+  args: [config:set, --no-restart, top-test-app, EXAMPLE_TOKEN=example-token-value]
+  stdout: |
+    -----> Setting config vars
+           EXAMPLE_TOKEN: example-token-value
+    -----> Restarting app (skipped: --no-restart)
+- name: dokku
+  args: [version]
+  stdout: |
+    dokku version 0.38.0 (shim)

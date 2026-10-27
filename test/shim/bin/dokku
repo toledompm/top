@@ -1,0 +1,153 @@
+#!/bin/sh
+# tier-2 dokku shim (ADR-0012): a fake `dokku` on PATH for tests.
+#
+# Not used by production code. Every TOP test that wants to verify argv
+# construction / canned responses through a real child process points exec.Runner
+# at this script instead of a real Dokku host.
+#
+# Behaviour:
+#   1. Logs every invocation to $DOKKU_SHIM_LOG (or a file under TMPDIR) as one
+#      JSON object per line: {"name":"dokku","args":[...],"malformed":false}.
+#   2. Serves canned responses from the registry directory
+#      $DOKKU_SHIM_FIXTURES (see test/shim/README.md): files keyed by
+#      hex(sha1(name + ' ' + space-joined args)) plus wider fallbacks.
+#   3. Falls back to nothing configured → exit 0 with empty stdout/stderr, so
+#      tests assert only on argv for fire-and-forget calls (`git:from-image`).
+#   4. Failure injection via $DOKKU_SHIM_FAIL_ONCE="subcmd|exitcode[|nth]":
+#      the nth invocation of calls whose first arg is `subcmd` exits with
+#      `exitcode` (default nth = 1). Counts live in $DOKKU_SHIM_STATE.
+#   5. Refuses malformed usage (no args, empty args, newline/overlong args):
+#      logged with "malformed":true, exits 2. Tests assert on the log.
+#
+# All responses/exit codes are data; no real Dokku operations happen ever.
+
+set -eu
+
+name=dokku
+
+# Registry env: fixtures dir (optional), log path (optional, defaults under TMPDIR).
+fx="${DOKKU_SHIM_FIXTURES:-}"
+log="${DOKKU_SHIM_LOG:-${TMPDIR:-/tmp}/top-dokku-shim.log}"
+state="${DOKKU_SHIM_STATE:-$log.state}" # per-subcommand invocation counters
+
+# sha1 of stdin, first field. Portable: GNU coreutils `sha1sum` (Linux) or
+# perl `shasum` (macOS). Computed as one string; see test/fakeexec.Signature.
+sha1_stdin() {
+    if command -v sha1sum >/dev/null 2>&1; then
+        sha1sum
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 1
+    else
+        echo 0 >&2
+        echo "dokku-shim: no sha1sum/shasum on PATH" >&2
+        exit 3
+    fi | cut -d' ' -f1
+}
+
+# json_escape flattens a single argument for embedding in a JSON string
+# (backslash, quote, and control chars), so even malformed-usage log lines
+# parse cleanly.
+json_escape() {
+    printf '%s' "$1" | awk 'BEGIN { ORS = "" }
+        {
+            gsub(/\\/, "\\\\")
+            gsub(/"/, "\\\"")
+            gsub(/\n/, "\\n")
+            gsub(/\r/, "\\r")
+            gsub(/\t/, "\\t")
+            print
+        }'
+}
+
+# --- 5. malformed-usage detection -------------------------------------------
+malformed=''
+argno=0
+for a in "$@"; do
+    argno=$((argno + 1))
+    if [ "$argno" -gt 128 ]; then
+        malformed="too many arguments"
+        break
+    fi
+    if [ -z "$a" ]; then
+        malformed="empty argument #$argno"
+        break
+    fi
+    # wc -l counts newline characters in the argument; 0 means none.
+    newlines=$(printf '%s' "$a" | wc -l | tr -d ' \t')
+    if [ "$newlines" -ne 0 ]; then
+        malformed="newline in argument #$argno"
+        break
+    fi
+    alen=$(printf '%s' "$a" | wc -c | tr -d ' \t')
+    if [ "$alen" -gt 1024 ]; then
+        malformed="argument too long at #$argno"
+        break
+    fi
+done
+
+# --- 1. always record the invocation ----------------------------------------
+args_json=''
+sep=''
+for a in "$@"; do
+    args_json="$args_json$sep\"$(json_escape "$a")\""
+    sep=','
+done
+is_malformed=true
+[ -z "$malformed" ] && is_malformed=false
+printf '{"name":"%s","args":[%s],"malformed":%s}\n' \
+    "$name" "$args_json" "$is_malformed" >>"$log" 2>/dev/null || true
+
+if [ -n "$malformed" ]; then
+    exit 2
+fi
+
+# --- 4. failure injection (takes precedence over everything) ----------------
+fail="${DOKKU_SHIM_FAIL_ONCE:-}"
+if [ -n "$fail" ]; then
+    fsub=$(printf '%s' "$fail" | cut -d'|' -f1)
+    fcode=$(printf '%s' "$fail" | cut -d'|' -f2)
+    fnth=$(printf '%s' "$fail" | cut -d'|' -f3)
+    [ -n "$fcode" ] || fcode=1
+    [ -n "$fnth" ] || fnth=1
+    # Carry out the injection only when the counter lands exactly on nth.
+    mkdir -p "$state/failcount" 2>/dev/null || true
+    cfile="$state/failcount/$fsub"
+    n=0
+    if [ -f "$cfile" ]; then
+        n=$(cat "$cfile" 2>/dev/null || echo 0)
+    fi
+    n=$((n + 1))
+    printf '%s' "$n" >"$cfile" 2>/dev/null || true
+    if [ "$n" -eq "$fnth" ]; then
+        printf 'shim: injected failure for %s (invocation %s)\n' "$fsub" "$n" >&2
+        exit "$fcode"
+    fi
+fi
+
+# --- 2. response resolution --------------------------------------------------
+resp=''
+sub=''
+[ "$#" -gt 0 ] && sub=$1
+family=${sub%%:*}
+
+if [ -n "$fx" ] && [ -d "$fx" ]; then
+    key="$name $*" # zero args → "dokku " (matches fakeexec.Join semantics)
+    sig=$(printf '%s' "$key" | sha1_stdin)
+    if [ -f "$fx/$sig.exit" ]; then
+        resp="$fx/$sig"
+    elif [ -n "$sub" ] && [ -f "$fx/subcmd.$sub.exit" ]; then
+        resp="$fx/subcmd.$sub"
+    elif [ -f "$fx/prefix.$family.exit" ]; then
+        resp="$fx/prefix.$family"
+    fi
+fi
+
+if [ -n "$resp" ]; then
+    ec=$(cat "$resp.exit" 2>/dev/null || echo 0)
+    cat "$resp.stdout" 2>/dev/null || true
+    cat "$resp.stderr" 1>&2 2>/dev/null || true
+    exit "$ec"
+fi
+
+# --- 3. default: success, empty output ---------------------------------------
+exit 0
