@@ -27,6 +27,7 @@ package exectest
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"slices"
 	"sync"
@@ -39,8 +40,9 @@ var _ exec.Runner = (*FakeRunner)(nil)
 
 // Call records one invocation.
 type Call struct {
-	Name string
-	Args []string
+	Name  string
+	Args  []string
+	Stdin []byte // content fed to a RunStdin call; empty for Run
 }
 
 // String returns a readable form, safe for test output.
@@ -198,9 +200,25 @@ func (f *FakeRunner) Last() (Call, bool) {
 // A non-zero ExitCode returns *exec.ExitError (exec.IsExitCode works);
 // unmatched calls get the default response.
 func (f *FakeRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	return f.run(ctx, nil, name, args...)
+}
+
+// RunStdin implements exec.StdinRunner: identical matching/response rules to
+// Run, with the stdin content recorded on the Call for golden assertions
+// (the adapter's synthesized healthcheck archive is proven by its bytes).
+func (f *FakeRunner) RunStdin(ctx context.Context, stdin io.Reader, name string, args ...string) ([]byte, []byte, error) {
+	content, readErr := io.ReadAll(stdin)
+	if readErr != nil {
+		content = []byte(fmt.Sprintf("stdin read error: %v", readErr))
+	}
+	return f.run(ctx, content, name, args...)
+}
+
+// run is the shared Run/RunStdin body.
+func (f *FakeRunner) run(ctx context.Context, stdin []byte, name string, args ...string) ([]byte, []byte, error) {
 	f.mu.Lock()
 	resp := f.matchLocked(name, args)
-	f.log = append(f.log, Call{Name: name, Args: append([]string{}, args...)})
+	f.log = append(f.log, Call{Name: name, Args: append([]string{}, args...), Stdin: stdin})
 	f.mu.Unlock()
 
 	if resp.Err != nil {

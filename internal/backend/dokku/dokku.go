@@ -45,6 +45,11 @@ const (
 type Client struct {
 	// Binary defaults to DefaultBinary; overridable for shims (tier 2).
 	Binary string
+	// InternalNetwork is the shared internal docker network the adapter
+	// attaches `routing.mode: internal` services to during Apply (ADR-0002).
+	// Empty falls back to DefaultInternalNetwork ("top-internal"); the e2e
+	// suite overrides it with its disposable per-container network.
+	InternalNetwork string
 	// Runner is the exec seam (internal/exec.FastExec in production,
 	// exectest.FakeRunner in tier-1 tests, a docker-exec wrapper in tier-3).
 	Runner exec.Runner

@@ -15,11 +15,11 @@ import (
 	"github.com/toledompm/top/internal/domain"
 )
 
-// PlatformBackend is the thin CRUD/read surface over the Dokku host. It is
-// deliberately smaller than the full contract for this wave: v0 covers the
-// read slice (T-201) and app CRUD (T-202); the Apply/Readiness/FailedLogs
-// lines land with the reconciler (M3, T-305..T-308) and extend this
-// interface, never fork it.
+// PlatformBackend is TOP's runtime abstraction over the Dokku host. v0
+// covered the read slice (T-201) and app CRUD (T-202); the integrator
+// deploy/teardown half (T-205..T-208) and the reconciler half
+// (Apply/Readiness/FailedLogs, T-305..T-307) complete the contract by
+// EXTENDING this interface — never forking it.
 //
 // Refs are qualified identities (namespace/name); the Dokku app name is
 // derived via domain.AppName ("<ns>-<name>"). All command argv knowledge
@@ -102,8 +102,84 @@ type PlatformBackend interface {
 	// own purge-data tier, under its own confirmation.
 	DestroyStorageEntry(ctx context.Context, name string) error
 
+	// --- reconciler surface (T-305..T-307, internal/reconcile) -----------------
+	//
+	// These three methods complete the platform-backend contract for the
+	// M3 reconciler. They EXTEND this interface (extend-not-fork rule);
+	// existing calls are untouched.
+
+	// Apply converges ONE service to its resolved ServiceSpec (contract
+	// `Apply(spec, secrets)`; the contract's names are illustrative — see
+	// the deviations note in internal/backend/dokku/README.md). Semantics:
+	// read-only delta against Inspect; mutate ONLY what differs (so an
+	// idempotent re-apply against a converged host is zero-mutation); batch
+	// env via one `config:set --no-restart` call (removed keys via one
+	// `config:unset`); set ports/domains/storage/network/restart-policy/
+	// resources; then deploy per source kind (image: `git:from-image
+	// [--force]`, or the synthesized-archive path when the spec defines
+	// healthchecks; build: `git:sync --build-if-changes <app> <repo>
+	// <sha>`, skipped entirely when that sha is already the deployed
+	// revision — Dokku's no-change path must never leave a build record).
+	//
+	// A failed deploy returns a *BackendError and leaves dokku's rollback
+	// semantics (deploy branch + source-image restored) in effect — the
+	// old release keeps serving.
+	//
+	// DEVIATIONS from the contract spelling (documented, not forked):
+	//   - the service identity travels explicitly as ref, matching every
+	//     other method (the reconciler may target adopted identities);
+	//   - secrets is the resolved map of secret VALUES keyed exactly by
+	//     spec.SecretRefs' names (ADR-0008: values merge with plain env in
+	//     the same batched config:set; argv is redacted in the exec layer);
+	//     nil is fine for services without SecretRefs;
+	//   - ApplyOptions carries the M3 acceptance knobs (ForcePull today).
+	Apply(ctx context.Context, ref domain.ServiceRef, spec domain.Service, secrets map[string]string, opts ApplyOptions) error
+
+	// Readiness implements contract `Readiness(ns, name)`: is the applied
+	// revision live and healthy? Deployed/Running/last-build come from the
+	// documented reports; Checks is an ACTIVE `checks:run` probe. The app
+	// not existing is domain.ErrNotFound.
+	Readiness(ctx context.Context, ref domain.ServiceRef) (Readiness, error)
+
+	// FailedLogs implements contract `FailedLogs(ns, name)`: the last
+	// failed deploy's output, redacted (the exec layer's redaction), as
+	// lines, most-recently-LAST, at most `lines` entries. An app with no
+	// failed deploy returns an empty slice and nil error; a missing app is
+	// domain.ErrNotFound.
+	FailedLogs(ctx context.Context, ref domain.ServiceRef, lines int) ([]string, error)
+
 	// Close releases any adapter-held resources. The Dokku adapter holds
 	// none (stateless CLI invocations), so this is a back-compat hook for
 	// future backends that keep connections.
 	Close() error
+}
+
+// Readiness is the answer to "is the applied revision live and healthy?"
+// (contract `Readiness(ns, name)`, composed per the mapping table from the
+// deployed/running flags, the last build status, and the active checks:run
+// probe). Deployed and Running are the ps:report facts; Build is the last
+// build's status; Checks reports the checks:run probe (true also when the
+// backend has no running processes to probe — the probe is skipped and
+// Deployed/Running carry the verdict). Revision/Image repeat
+// LastGoodRevision so callers can gate "applied revision == live revision".
+// Gate semantics are the reconciler's: a service is ready when Deployed &&
+// Running && Build == BuildSucceeded && Checks.
+type Readiness struct {
+	Deployed bool
+	Running  bool
+	Build    domain.BuildStatus
+	Checks   bool
+	Revision string
+	Image    string
+}
+
+// ApplyOptions carries per-apply knobs beyond the desired spec.
+//
+// ForcePull passes dokku `git:from-image --force`: the reconciler sets it
+// when the desired source is a MUTABLE tag whose movement a poll detected
+// (contract: "--force when the desired ref is a mutable tag and poll
+// detected movement; digests never need it"). Digest-pinned and build
+// sources never force.
+type ApplyOptions struct {
+	ForcePull bool
 }

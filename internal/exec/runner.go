@@ -76,6 +76,19 @@ type Runner interface {
 	RunStream(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error
 }
 
+// StdinRunner is the optional, ADDITIVE capability seam for commands that
+// must receive their primary input on STDIN (ADR-0002's synthesized
+// healthcheck archive: `git:from-archive <app> --`). Keep it a separate
+// interface — extended, never forked — so Runners that cannot feed stdin
+// stay valid implementations of Runner. Redaction rules are identical to
+// Run: captured buffers are redacted from the seed before return.
+type StdinRunner interface {
+	// RunStdin runs the command with stdin fed from the given reader.
+	// Captures stdout/stderr exactly like Run and returns a typed
+	// *ExitError / ErrTimeout / ErrNotFound under the same rules.
+	RunStdin(ctx context.Context, stdin io.Reader, name string, args ...string) (stdout, stderr []byte, err error)
+}
+
 // FastExec is the production Runner. The zero value is usable: minimal env
 // passthrough, DefaultWaitDelay, no redaction seed.
 type FastExec struct {
@@ -115,10 +128,27 @@ func NewFastExec() *FastExec { return &FastExec{} }
 
 // Run implements Runner.
 func (f *FastExec) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	return f.run(ctx, nil, name, args...)
+}
+
+// RunStdin implements StdinRunner: identical to Run, with cmd.Stdin wired to
+// stdin. The child always gets stdin here (nil falls back to /dev/null
+// behavior of cmd.Stdin == nil, so a nil reader is reserved for callers that
+// genuinely want no stdin pipe).
+func (f *FastExec) RunStdin(ctx context.Context, stdin io.Reader, name string, args ...string) ([]byte, []byte, error) {
+	return f.run(ctx, stdin, name, args...)
+}
+
+// run is the shared Run/RunStdin body; streaming variants are separate
+// because they have different buffer semantics.
+func (f *FastExec) run(ctx context.Context, stdin io.Reader, name string, args ...string) ([]byte, []byte, error) {
 	if err := validate(name, args); err != nil {
 		return nil, nil, err
 	}
 	cmd, out, errOut := f.newCmd(ctx, nil, nil, name, args)
+	if stdin != nil {
+		cmd.Stdin = stdin
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, errOut.Bytes(), f.startErr(err, name)
 	}
