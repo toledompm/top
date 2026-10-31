@@ -79,3 +79,44 @@ fully supported.
 - Should `push` events to non-configured branches enqueue a cheap no-op or be
   rejected at intake? Proposal: verify + 202 + no-op after fetch (keeps
   delivery audit complete). Decide in M3.
+
+## Amendment (2026-10-31, M3 conformance pass; status unchanged — accepted)
+
+Webhook intake is now implemented (`internal/webhook`, controller HTTP
+server T-310). The values fixed in code so tests + docs agree:
+
+- **Pinned header set:**
+  - `X-Hub-Signature-256: sha256=<hex(HMAC-SHA256(secret, raw-body))>` —
+    computed over the exact capped body bytes; any other scheme (`sha1=`)
+    is rejected, never fallen back to; compared with `hmac.Equal`
+    (constant time).
+  - `X-GitHub-Delivery` — the dedup key and the reconcile operation's
+    correlation id; required, ≤ 128 bytes.
+  - `X-GitHub-Event` — allowlist: `push` only in v0
+    (`webhook.Options.AllowedEvents` can widen it for verifier variants).
+- **Body cap:** `http.MaxBytesReader`, default **64 KiB**
+  (`webhook.DefaultMaxBodyBytes` / `Options.MaxBodyBytes`). Over-cap → 413,
+  no store write, no enqueue.
+- **Status code pin:** first-seen valid push → **202**
+  `{"accepted":true,"deduped":false}` + enqueue; duplicate delivery id →
+  **200** `{"accepted":false,"deduped":true}`, no second enqueue. Signed
+  malformed payload → 400 with NO store write (dedup only successful
+  parses, so a bad payload can never poison a delivery id — the provider's
+  retry delivers the corrected payload). Queue closed/rejected → 503 so the
+  provider retries while the poll backstops.
+- **Open question above, decided in M3:** non-allowlisted events are 202
+  no-ops without enqueue — the allowlist check runs *after* dedup, so a
+  retried unknown-event delivery is also deduped (keeps ADR-0003's
+  "delivery audit complete" proposal; verified in handler code).
+- **Secret resolution:** the HMAC secret is resolved **per request**
+  through the SecretProvider seam (ADR-0008), secret name defaulting to
+  `webhook-hmac` — rotation needs no controller restart. The value is
+  never logged, never on argv, never in a response.
+- **Delivery retention:** records kept forever — no TTL/cleanup (the
+  delivery-id namespace is provider-unique; homelab volume makes
+  unbounded growth a non-issue; a window, if ever wanted, is a store-side
+  change). Reopen-persistence across controller restarts is tested against
+  real SQLite.
+- Payload content rule unchanged and enforced: only the push `ref` is
+  parsed, for audit logging only; payload content never joins the enqueue
+  (pinned by a test).

@@ -27,10 +27,8 @@ with instructions. If present: verify version/health.
 provision deploy key + pinned known_hosts (operator supplies), create the
 shared internal network (`network:create top-internal`), register the repo
 and verify `Resolve(branch)` works. If the repo is missing/empty and
-`--init` was passed: render the embedded platform-repo template, create the
-remote (provider permitting), and push the initial commit with a one-time
-write-capable credential (ADR-0005); otherwise missing/empty repo = stop
-with instructions.
+`--init` was passed — see the `--init` notes below; otherwise missing/empty
+repo = stop with instructions.
 
 **4. Bootstrap deploy** — one-time direct Dokku deploy of
 `core-top-controller` from the pinned bootstrap image, with its SQLite
@@ -54,6 +52,24 @@ storage mounts → with `--purge-data`: destroy storage entries + `/var/lib/top`
 git keys → with `--uninstall-dokku`: run Dokku's documented purge after a
 separate confirmation that prints its leftovers → final ledger diff report
 proving pre-existing resources survived.
+
+## `--init` (as implemented in T-212, subtitled truth per internal/install)
+
+`topctl install <repo> --init` seeds ONE initial commit into a platform
+remote the operator created EMPTY (the remote itself is **never created**
+via a provider API — a deliberate v0 deferral of the ADR-0005 "provider
+permitting" clause). It pushes TOP's embedded platform-repo template (same
+content as `examples/platform-repo`, single source of truth). Typed
+refusals: unreachable remote under `--init` → `ErrRemoteUnreachable`; a
+non-empty remote refuses with the remote's evidence — never forced, merged,
+or overwritten; a re-run recognizes its own seed and resumes. Credentials
+(ADR-0008): https remotes take a one-time write token from the
+`TOP_INIT_TOKEN` environment ONLY, carried through a 0700 askpass shim
+deleted after the push (never argv, never git config, never on disk, never
+logged); ssh remotes authenticate with the operator's deploy-key FILE PATH
+inside `GIT_SSH_COMMAND` — if that key is read-only the push fails loudly
+and the operator switches to https + `TOP_INIT_TOKEN`. Steady-state
+transport stays the read-only deploy key.
 
 ## Failure behavior
 

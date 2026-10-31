@@ -34,7 +34,28 @@ fetch → resolve sha → load+validate specs (strict)
   `core-top-controller` is reported, never auto-applied.
 - **Pruning is never implicit**: services absent from Git are reported as
   `orphaned`; removal only via `topctl reconcile --prune` (non-`core`) with
-  confirmation.
+  confirmation — the exact consent pair is pinned in the ADR-0009
+  amendment: `--prune` + `--confirm` (the pair is fail-fast invalid before
+  the lease when incomplete) + the two-key gate per candidate; gate
+  refusals surface per candidate with the inventory reason, never a bare
+  run failure.
+
+## Diff-only path (T-309, shared with `topctl diff`)
+
+`reconcile.DiffOnly(ctx, RunInput, Backend, StateStore)` runs the same
+pipeline's read-only phases — validate → observe → plan — minus every
+mutating stage (no lease, no apply, no record, no prune). It returns the
+`DiffReport`:
+
+- `Revision` (the plan's resolved sha), `Services []ServiceDiff` (per
+  service: ref, change kind, optional spec `Source` file:line position,
+  and the field-level `domain.FieldChange` list — `secretRef` fields carry
+  path + change marker only, never values), and `Orphaned` (host services
+  absent from Git).
+
+`Reconciler.Run` embeds the same report in `RunResult.DiffReport`
+(noop runs included), so `topctl diff` preview and run records can never
+diverge: both come from one `internal/plan` computation.
 
 ## Diff output (shared with `topctl diff`)
 

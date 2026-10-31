@@ -13,11 +13,11 @@ Unix process viewer; see ADR-0011), agent-consumable. Global flags:
 | `topctl doctor` | read-only | Installer phase 0 | exits non-zero with per-check failures + fixes |
 | `topctl install <repo> [--install-dokku] [--dry-run]` | mutating, gated | Installer | approval prompts per ADR-0009 |
 | `topctl status [--namespace N] [--watch]` | read-only | Backend.Inspect + Store | per service: revision, state, health, last op |
-| `topctl diff [--revision R]` | read-only | Reconciler plan | **zero side effects**; exit 1 on drift (script-friendly) |
-| `topctl reconcile [--now] [--service ns/name] [--prune] [--include-controller]` | mutating | Reconciler | `--prune` and `--include-controller` require confirmation |
-| `topctl deploy <ns/name> [--revision sha]` | mutating | Reconciler (single service) | the controller self-update path (ADR-0005) |
-| `topctl history [ns/name] [--limit N]` | read-only | Store | operation records (see reconciler.md example) |
-| `topctl logs <ns/name> [--failed]` | read-only | Backend | thin, redacted pass-through |
+| `topctl diff [--revision R]` | read-only | Reconciler `DiffOnly` (T-309) | **zero side effects** — plan phases minus every mutating stage (no lease, no record); exit 1 on any create/update/delete/self-drift row or orphan, 0 clean; `--revision` pins a git sha instead of HEAD |
+| `topctl reconcile [--now] [--service ns/name] [--prune] [--include-controller]` | mutating | Reconciler.Run | `--prune` and `--include-controller` require the confirm gate (untouched non-TTY exits 2); run failures, contained per-service failures and lease conflicts (envelope code `lease-conflict`) are exit 3; git/backing unavailability 4; `--dry-run` prints the plan, exit 0; `--service` narrows to that service + its transitive dependencies |
+| `topctl deploy <ns/name> [--revision sha]` | mutating | Reconciler (single service) | converge the named service + its closed dependsOn set through a full run; not confirm-gated (converges toward git per ADR-0002 — the destructive boundary stays the prune consent pair); `--dry-run` identical shape |
+| `topctl history [ns/name] [--limit N]` | read-only | Store | operation records newest first (limit default 20); failed rows render the `topctl logs <ns/name>` + last-known-good hint vocabulary; absent state = empty list, exit 0 |
+| `topctl logs <ns/name> [--failed] [--lines N]` | read-only | Backend.ServiceLogs / FailedLogs | thin, redacted pass-through: runtime `logs <app> [--num N]`, `--failed` → `logs:failed`; most-recent `lines` kept (default 100) |
 | `topctl backup create|list|verify` | mixed | BackupProvider | create is mutating but non-destructive |
 | `topctl recover diagnose|restart|redeploy|restore` | mixed | Recovery | **works with controller down** (ADR-0005) |
 | `topctl uninstall [--purge-data] [--purge-secrets] [--uninstall-dokku] [--dry-run]` | destructive, gated | Installer teardown | tiered confirmations |
@@ -38,7 +38,8 @@ Unix process viewer; see ADR-0011), agent-consumable. Global flags:
 - Secret values never appear in any output mode (exec-layer redaction +
   store-level discipline).
 - Exit codes: 0 ok; 1 drift/diagnose-findings (for scripting); 2 usage;
-  3 operation failed; 4 backend/store unavailable.
+  3 operation failed (includes a lost reconcile lease — envelope code
+  `lease-conflict`, same row, T-309); 4 backend/store unavailable.
 
 ## Illustrative
 

@@ -85,3 +85,53 @@ checks.
 - Mono-revision vs per-directory revisions (reconcile only changed
   namespaces on webhook path filter): v0 reconciles the whole repo every
   run (small scale); path-filtered fast paths are an optimization if needed.
+
+## Amendment (2026-10-31, M3 conformance pass; status unchanged — accepted)
+
+Consolidated from the M3 implementation (T-305..T-309) — each item verified
+against `internal/backend/dokku` and the reconciler seam before recording.
+
+**A1. Adapter-managed env-key carve-out (scopes ADR-0008's "never read
+config values").** The adapter still never reads config VALUES, and the
+reconciler compares env by key set only (drift = keys added/removed, not
+value changes — value drift detection waits for backend checksum work).
+But it owns ONE config key by design: `TOP_ARCHIVE_SHA256`, the sha256 of
+the last successfully converged synthesized `app.json` archive (ADR-0002's
+custom-healthcheck deploy path). Reading it is the only way to converge
+archives on real Dokku 0.38: re-sending an identical archive exits 1 *and*
+records a FAILED build, poisoning the readiness build-status gate; the
+fingerprint match lets the adapter know the deployed checks already equal
+the spec's checks and skip the re-send. Carve-out rules:
+
+- only keys prefixed `TOP_ARCHIVE` (today exactly `TOP_ARCHIVE_SHA256`);
+- written only AFTER a successful deploy (a pre-deploy write would leave
+  the new sha in config after a failed deploy, and the next apply would
+  wrongly skip convergence of an app still serving the old archive — the
+  fingerprint-poisoning bug this fixes, tier-3 verified 0.38.32);
+- excluded from env key-set drift and from config:unset (the unset loop
+  skips it explicitly, like the dokku-managed keys such as `GIT_REV`).
+
+**A2. Resource quantities are translated and compared semantically.**
+ServiceSpec uses K8s-style quantities (`500m` CPU, `256Mi` memory) but
+Dokku forwards `resource:limit` flags verbatim to `docker container
+create`, which rejects K8s spellings (tier-3 0.38.32: "invalid suffix
+'mi'"). The adapter translates spec quantities to docker-native forms
+(`500m` → `0.5`, `256Mi` → `268435456`) before calling `resource:limit`
+(`docs/contracts/platform-backend.md`, quantities translation at the
+adapter boundary), and compares observed vs desired limits SEMANTICALLY
+(same quantity in any spelling = no drift), so converged apps never
+re-mutate because dokku normalized the stored spelling. Unparseable spec
+values pass through verbatim (validation upstream still applies).
+
+**A3. Mapping-table status as shipped.** The deploy mapping above held
+(`git:from-image` image path, `git:sync --build-if-changes` build path,
+synthesized archive with checks via stdin). Two refinements verified on
+0.38.32:
+
+- Zero-mutation skips require the release to actually be serving: a
+  revision/image match with `Running=false` (failed prior deploy) is
+  redeployed, not skipped; identical image redeploys exit 0 and start the
+  container.
+- `builder:set skip-cleanup true` (above, Rollback) is NOT in the M3 apply
+  path — the rollback story still assumes previous images, so treat this
+  as a known gap for the next milestone, not a shipped behavior.

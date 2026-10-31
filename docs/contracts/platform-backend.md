@@ -13,13 +13,14 @@ All methods take `ctx`, respect cancellation, and have per-class timeouts.)
 | Operation | Semantics | Dokku mapping (verified, 0.38.x) |
 | --- | --- | --- |
 | `EnsureApp(ns, name)` | Create app if absent; adopt if exists-and-ours | `apps:exists` (exit code) → `apps:create <ns>-<name>` |
-| `Inspect(ns, name)` | Structured actual state: deployed?, running?, revision/image, env keys, ports, domains, storage mounts, restart policy, resources, networks, last build status | `ps:report --format json`, `builds:report`, `git:report --git-sha/--git-source-image`, `apps:report --app-deploy-source(-metadata)`, `ports:report --ports-map-json`, `storage:list --format json`, `proxy:report --format json`, `network:report`, `resource:report` |
-| `Apply(spec, secrets)` | Converge one service to its ServiceSpec. Batches env via `--no-restart`; deploys per ADR-0002; sets ports/domains/storage/networks/restart-policy/resources; zero-downtime by default | `config:set --no-restart`, `git:from-image [--force]`, `git:sync --build-if-changes`, `git:from-archive -- tar` (stdin, for synthesized app.json), `ports:set`, `domains:set`, `storage:create`/`storage:mount`, `network:set`, `ps:set restart-policy`, `resource:limit`, `checks:set` |
-| `Readiness(ns, name)` | Is the applied revision live and healthy? | composed: `ps:report --deployed --running` + `builds:report --build-status` + `checks:run` (active probe) |
-| `LastGoodRevision(ns, name)` | What was last successfully deployed? | `git:report --git-source-image` / `apps:report --app-deploy-source-metadata` |
+| `Inspect(ns, name)` | Structured actual state: deployed?, running?, revision/image, env KEY NAMES only (values never read — ADR-0008), ports, storage mounts, restart policy, resources, networks, last build status. **Domains are NOT populated yet** (no verified `domains:report` JSON on 0.38) | `ps:report --format json`, `builds:report`, `git:report`, `apps:report`, `ports:report --ports-map-json`, `storage:list --format json`, `config:keys`, `network:report`, `resource:report` (all `--format json` where offered) |
+| `Apply(ref, spec, secrets, opts)` | Converge one service to its ServiceSpec. Env converges by KEY SET (at most one `config:set --no-restart` + one `config:unset`; value drift deliberately not compared). Resource specs are K8s-style quantities translated to docker-native before `resource:limit`, compared semantically (converged apps never re-mutate). Deploys per ADR-0002; zero-mutation skips require the release to actually be running; `--force` on mutable tags only when movement was observed. Archive (healthcheck) deploys fingerprint their app.json into the adapter-owned `TOP_ARCHIVE_SHA256` env key, written only after a successful deploy (ADR-0002 amendment A1). `checks:set` is NOT used for timings — vacated on 0.38 (`wait-to-retire` is the only accepted key; timings ride the app.json) | `config:set --no-restart`, `config:unset`, `git:from-image [--force]`, `git:sync --build-if-changes`, `git:from-archive <app> -- tar` (via stdin), `ps:rebuild`, `ports:set`, `domains:set`, `storage:create`/`storage:mount`/`storage:unmount`, `network:set`, `ps:set restart-policy`, `resource:limit [--cpu --memory --process-type web]` / `resource:limit-clear` |
+| `Readiness(ref)` | Composes from reports: deployed + running + last build status, plus an ACTIVE `checks:run` probe (skipped — reported healthy — when nothing is running to probe). A failing check is the ANSWER (`Checks=false`), never an operation failure | `ps:report` / `builds:report` (via Inspect compose) + `checks:run` |
+| `LastGoodRevision(ns, name)` | What was last successfully deployed? | `apps:report --app-deploy-source-metadata`, fallback `git:report --git-source-image` |
 | `Stop(ns, name)` / `Destroy(ns, name)` | Safe stop; destroy only from explicit prune/uninstall paths with ownership already proven by caller | `ps:stop`; `apps:destroy --force` |
-| `FailedLogs(ns, name)` | Last failed deploy output (redacted) | `logs:failed`, `builds:output` |
-| `EnsureNetwork(name)` | Shared internal network for `routing.mode: internal` | `network:create <name>` (carries `com.dokku.network-name`, attachable) |
+| `FailedLogs(ref, lines)` | Last failed deploy output (redacted upstream), split to lines, most-recent `lines` kept. Missing app → `ErrNotFound`; exit 1 (no failed-deploy output) → empty success | `logs:failed <app>` |
+| `ServiceLogs(ref, lines)` (T-308 extend, not fork) | Recent app output for `topctl logs` runtime mode: same shape as FailedLogs (most-recent-last; exit 1 = empty) | `logs <app> [--num N]` |
+| `EnsureNetwork(name)` | Shared internal network for `routing.mode: internal` | `network:exists` → `network:create <name>` |
 | `HealthyBackend()` | Is Dokku itself usable? | `dokku version` + a cheap `apps:list --format json` |
 
 ## Error semantics
@@ -28,8 +29,11 @@ All methods take `ctx`, respect cancellation, and have per-class timeouts.)
   `ErrBackend` (dokku non-zero exit, carries redacted stderr + exit code),
   `ErrUnhealthy` (backend unusable).
 - Dokku exit 0 with stderr warnings → log, do not fail.
-- Timeouts per command class (reports 30 s, deploys 15 min, config 60 s);
-  context cancellation always honored; `WaitDelay` set so pipes can't wedge.
+- Timeouts per command class as implemented (reports 30 s, deploys 10 min,
+  mutations 2 min, destroy 5 min); context cancellation always honored;
+  `WaitDelay` set so pipes can't wedge. A dokku not-exist answer is absent
+  via exit 20 (0.38.32 canonical, tier-3 verified), with exit 10/1 as
+  loose aliases.
 
 ## Mapping notes & known wrinkles (from ADR-0001/0002 research)
 

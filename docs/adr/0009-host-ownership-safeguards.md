@@ -93,3 +93,21 @@ requires the two-key match above.
   the project controls or a documented custom prefix; decide in M2).
 - Whether `topctl doctor` should offer to *open* required firewall ports or only
   print the ufw/firewalld commands (proposal: print only).
+
+## Amendment (2026-10-31, M3 conformance pass; status unchanged — accepted)
+
+**Reconciler-side consent pair, pinned.** `internal/reconcile` implements
+the "`--prune` deletions are gated" decision as an exact consent PAIR:
+deletion requires ALL of (1) the `--prune` flag, (2) the `--confirm`
+destructive confirmation, and (3) the two-key gate per candidate passing
+(owned ledger row ∧ fresh host-snapshot agreement, via
+`inventory.Deletable`). Verified semantics worth recording:
+
+- `--prune` WITHOUT `--confirm` is a fail-fast invalid-run error BEFORE the
+  lease — nothing is observed, mutated, or recorded.
+- The gate refuses per candidate (never a bare run failure): the refusal
+  plus the inventory reason string lands in `RunResult.PruneRefusals`,
+  mirroring uninstall's skip-with-warning rule.
+- `core` namespace services (and the controller's own ref) are never prune
+  candidates at all.
+- A deleted app drops its ledger row only after a successful destroy.

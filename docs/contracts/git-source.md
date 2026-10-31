@@ -10,31 +10,39 @@ semantics in ADR-0003.
   access and host key before marking install complete. Two cases
   (ADR-0005): (a) repo exists with content → register and sync, change
   nothing; (b) repo missing/empty and `--init` given → render the embedded
-  platform-repo template, create the remote repo where the provider
-  supports it, push the initial commit using a one-time write-capable
-  credential (never stored), then proceed as (a). Without `--init`, a
-  missing/empty repo is a preflight error.
-- **Clone/fetch**: maintain a bare mirror under `/var/lib/top/git/mirror.git`
-  via the exec layer with `GIT_SSH_COMMAND` (strict host-key checking against
-  the pinned `known_hosts`). Shallow where possible.
-- **Revision resolution**: `Resolve(branch) → sha` (`git ls-remote`), and
-  `Fetch(sha)` so any referenced sha is locally present.
-- **Materialization**: `CheckoutFiles(sha, dest)` — extract
-  `<sha>:<namespace>/*.yaml` to a temp dir for spec loading
-  (`git archive <sha> | tar -x`), never a working-tree checkout shared across
-  runs.
-- **Polling**: 60 s loop calling `Resolve`; change → enqueue reconcile.
+  platform-repo template (single source of truth shared with
+  `examples/platform-repo`) and push ONE initial commit using a one-time
+  write-capable credential, never stored (see installer.md — the
+  remote itself is NOT created via a provider API; v0 deferral). Without
+  `--init`, a missing/empty repo is a preflight error.
+- **Clone/fetch**: `EnsureMirror(ctx)` — one-time `git clone --mirror`
+  into the mirror dir under the TOP data area (`dataDir/git/`); subsequent
+  fetches go to the mirror, not the network remote. Exec-layer driven with
+  `GIT_SSH_COMMAND` (strict host-key checking against the pinned
+  `known_hosts`).
+- **Revision resolution**: `ResolveLatest(ctx) → sha`
+  (`git ls-remote <url> <branch>`); the poller's target resolution.
+- **Materialization**: `FetchRevision(ctx, sha) → Snapshot` — fetch the
+  sha onto the mirror, then `git archive`-extract it into a deterministic
+  temp workspace; `Snapshot` hands the extracted path to the caller (spec
+  parsing is `internal/spec`'s job). Never a working-tree checkout shared
+  across runs.
+- **Polling**: 60 s loop calling `ResolveLatest`; change → enqueue reconcile
+  (controller daemon, ADR-0003).
 - **Webhook intake**: see ADR-0003 (HMAC verify, delivery dedup, 202+enqueue;
   payload content never used as desired state).
 
 ## Error semantics
 
-- Auth/host-key failure → `ErrGitAuth` with a remediation hint (deploy key
-  not granted / known_hosts mismatch) — **never** auto-bypass verification.
-- Network/remote failure → `ErrGitUnavailable`, retried with backoff
+- Auth/host-key failure → typed auth errors (`ErrAuthFailed`,
+  `ErrHostKey` — `KindHostKey`… classification) with a remediation hint
+  (deploy key not granted / known_hosts mismatch) — **never** auto-bypass
+  verification.
+- Network/remote failure → `ErrUnreachable`, retried with backoff
   (ADR-0003); a failed fetch aborts the run *before* mutation.
-- sha vanished (force-push) → `ErrRevisionGone`; the run fails and alerts
-  (someone rewrote the source of truth — human should look).
+- sha vanished (force-push) → `ErrNotFound` wrapping `ErrRevisionGone`;
+  the run fails and alerts (someone rewrote the source of truth — human
+  should look).
 
 ## Security rules
 
