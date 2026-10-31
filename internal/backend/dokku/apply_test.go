@@ -748,6 +748,62 @@ func TestFailedLogsMissingApp(t *testing.T) {
 	}
 }
 
+// --- ServiceLogs (T-308: the CLI `topctl logs` surface) ---------------------
+
+func TestServiceLogs(t *testing.T) {
+	f := exectest.NewFakeRunner()
+	f.SetOutput("dokku", ok(existsYes), "apps:exists", "top-web")
+	f.SetOutput("dokku", ok("l1\nl2\nl3\n"), "logs", "top-web", "--num", "100")
+
+	rows, err := newC(f).ServiceLogs(run(t), tvsRef, 100)
+	if err != nil {
+		t.Fatalf("ServiceLogs: %v", err)
+	}
+	if !slices.Equal(rows, []string{"l1", "l2", "l3"}) {
+		t.Fatalf("want all lines kept when under the cap, got %q", rows)
+	}
+	if got := strings.Join(recordedArgv(f), " "); !strings.Contains(got, "logs top-web --num 100") {
+		t.Fatalf("want `logs <app> --num N` recorded, got %q", got)
+	}
+}
+
+func TestServiceLogsCapsToMostRecent(t *testing.T) {
+	f := exectest.NewFakeRunner()
+	f.SetOutput("dokku", ok(existsYes), "apps:exists", "top-web")
+	f.SetOutput("dokku", ok("l1\nl2\nl3\n"), "logs", "top-web", "--num", "2")
+
+	rows, err := newC(f).ServiceLogs(run(t), tvsRef, 2)
+	if err != nil {
+		t.Fatalf("ServiceLogs: %v", err)
+	}
+	if !slices.Equal(rows, []string{"l2", "l3"}) {
+		t.Fatalf("want last 2 lines, got %q", rows)
+	}
+}
+
+func TestServiceLogsNoOutputIsEmpty(t *testing.T) {
+	f := exectest.NewFakeRunner()
+	f.SetOutput("dokku", ok(existsYes), "apps:exists", "top-web")
+	// exit-1 with no output is the "nothing to tail" answer, not a failure.
+	f.SetOutput("dokku", fail(1, "!  No logs"), "logs", "top-web", "--num", "10")
+
+	rows, err := newC(f).ServiceLogs(run(t), tvsRef, 10)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("want empty success, got (%q, %v)", rows, err)
+	}
+}
+
+func TestServiceLogsMissingApp(t *testing.T) {
+	f := exectest.NewFakeRunner()
+	f.SetOutput("dokku", fail(20, existsNo), "apps:exists", "top-web")
+
+	_, err := newC(f).ServiceLogs(run(t), tvsRef, 10)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	wantArgvCount(t, f, "logs", 0) // not-found short-circuits before any log read
+}
+
 // Interface drift guard: the Dokku client must satisfy the extended
 // PlatformBackend exactly (contract spine).
 var _ backend.PlatformBackend = (*Client)(nil)

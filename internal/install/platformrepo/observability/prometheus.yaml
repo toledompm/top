@@ -1,0 +1,27 @@
+# observability/prometheus.yaml — prometheus-READY, commented example
+# service (v0 template: the platform repo ships with the controller seed
+# only; enable monitoring by uncommenting this whole file after pinning an
+# image digest you actually want to run). Spec shape per
+# docs/contracts/service-spec.md; the digest below is fictional.
+#
+# apiVersion: top/v1alpha1
+# kind: Service
+# metadata:
+#   name: prometheus
+#   namespace: observability
+# spec:
+#   source:
+#     image: docker.io/prom/prometheus
+#     digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef   # fictional — pin a real digest before enabling
+#   ports:
+#     - { name: http, containerPort: 9090 }
+#   routing:
+#     mode: internal # reachable by grafana over the shared top-internal network, not exposed
+#   healthcheck:
+#     http: { path: /-/healthy, port: http }
+#     intervalSeconds: 30
+#   storage:
+#     - { name: data, mountPath: /prometheus, size: 2Gi }
+#   env:
+#     TZ: UTC
+#   restartPolicy: always

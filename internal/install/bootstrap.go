@@ -241,13 +241,28 @@ func runWiring(ctx context.Context, opts Options, st store.Store, opID string, r
 	}
 	res.Created = append(res.Created, "network "+InternalNetwork)
 
+	// Repo initialization (--init, ADR-0005's contract clause in phase 3):
+	// when the flag passed and the remote resolves EMPTY (freshly probed
+	// here), seed the embedded platform-repo template and push one commit
+	// (internal/install/repo_init.go for the credential model). Without
+	// --init this is a no-op BY DESIGN — the existing-repo path touches
+	// the remote with nothing but phase 0's read-only ls-remote.
+	if opts.Init {
+		if err := runRepoInit(ctx, opts, st, opID, res, extra); err != nil {
+			return err
+		}
+	}
+
 	// Git remote registration: recorded on the phase op (details above,
 	// via extra) — the full store-side registration + Resolve check is
 	// T-212/M3 (documented deviation).
 	extra["gitRemote"] = opts.RepoURL
 	extra["gitBranch"] = opts.Branch
-	res.Checked = append(res.Checked, "git remote "+opts.RepoURL+" (branch "+opts.Branch+
-		") recorded on the install op; full registration + Resolve check is T-212/M3")
+	note := " recorded on the install op; the store-side registration + Resolve check stays with the controller (M3)"
+	if opts.Init {
+		note = " recorded on the install op (--init seeded it: the first reconcile finds " + opts.RepoURL + " at the pushed seed revision)"
+	}
+	res.Checked = append(res.Checked, "git remote "+opts.RepoURL+" (branch "+opts.Branch+")"+note)
 	return nil
 }
 

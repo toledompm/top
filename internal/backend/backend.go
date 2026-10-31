@@ -148,6 +148,13 @@ type PlatformBackend interface {
 	// domain.ErrNotFound.
 	FailedLogs(ctx context.Context, ref domain.ServiceRef, lines int) ([]string, error)
 
+	// ServiceLogs implements the CLI logs surface (T-308, addition
+	// documented as a deviance in internal/backend/dokku/README.md): the
+	// app's recent runtime logs (`logs`), redacted (exec-layer redaction),
+	// as lines, oldest-LAST, at most `lines` entries (lines<=0 → default
+	// cap). A missing app is domain.ErrNotFound.
+	ServiceLogs(ctx context.Context, ref domain.ServiceRef, lines int) ([]string, error)
+
 	// Close releases any adapter-held resources. The Dokku adapter holds
 	// none (stateless CLI invocations), so this is a back-compat hook for
 	// future backends that keep connections.

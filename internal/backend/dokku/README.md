@@ -100,6 +100,13 @@ one step earlier.
 - `resource:report --format json` is relied on although the resource docs
   page shows flag-form output only (the standard report skeleton provides
   `--format json`; e2e verifies).
+- **T-308 addition (not in platform-backend.md's method table):**
+  `ServiceLogs(ctx, ref, lines)` — `logs <app> --num N` recent-app-output
+  read. The platform-backend contract covers the failed-deploy log
+  (`FailedLogs`/`logs:failed`) but not the runtime log tail; the CLI
+  `topctl logs` row (docs/contracts/cli.md: "thin, redacted pass-through")
+  needs it, so it is an interface EXTEND (extend-not-fork rule), cap
+  semantics mirrored from FailedLogs (most-recent-last, exit-1 = empty).
 - Verified live on 0.38.32 (tier-3 run 2026-10-27): report `--format
   json` returns a single flat object carrying BOTH stripped and
   legacy-prefixed keys; a never-deployed app's `git:report` reports

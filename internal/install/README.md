@@ -48,8 +48,26 @@ only, never correctness.
 
 ## Known fences for later milestones
 
-- **Repo creation (`--init`)** is T-212/M3 — a missing platform repo is a
-  clean preflight error today (ADR-0005's no-init rule).
+## `--init`: seeding an empty platform repo (T-212)
+
+`topctl install <repo> --init` pushes ONE initial commit into a platform
+remote the operator created EMPTY, seeding TOP's embedded platform-repo
+template (`internal/install/platformrepo`, symlinked at
+`examples/platform-repo` — the same content, single source of truth). The
+remote itself is never created via a provider API (deliberate v0 deferral of
+ADR-0005's "provider permitting" clause); an unreachable remote under
+`--init` is a clean typed refusal (`ErrRemoteUnreachable`). A non-empty
+remote under `--init` refuses with the remote's evidence and never forces,
+merges, or overwrites (`ErrRepoNotEmpty`); a re-run recognizes its own seed
+and resumes.
+
+Credentials (ADR-0008): https remotes take a one-time write token from the
+`TOP_INIT_TOKEN` environment ONLY, carried in the child env through a 0700
+askpass shim deleted after the push — never argv, never git config, never on
+disk, never logged. ssh remotes authenticate with the operator's deploy-key
+FILE PATH inside `GIT_SSH_COMMAND`; if that key is read-only the push fails
+loudly on the provider's stderr — switch the remote to https + `TOP_INIT_TOKEN`
+instead. The steady-state transport stays the read-only deploy key.
 - **First reconciliation / adoption** (contract phase 5) lands M3/M4: until
   then the bootstrap deployment stays `bootstrap-owned`.
 - Deploy-key *generation* (vs operator-supplied) is M3.

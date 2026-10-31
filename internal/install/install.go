@@ -110,8 +110,8 @@ var (
 	// passed — a clean stop with instructions (installer contract).
 	ErrDokkuRequired = errors.New("install: dokku absent and --install-dokku not passed")
 	// ErrRepoMissing: the platform repo URL is missing, empty, or
-	// unreachable — per ADR-0005's no-init rule a clean preflight error
-	// with instructions (--init is T-212/M3 work; nothing auto-creates).
+	// unreachable — per ADR-0005 a clean preflight error with instructions
+	// (--init seeds an EMPTY remote; an unreachable one stays this error).
 	ErrRepoMissing = errors.New("install: platform repo missing, empty, or unreadable")
 	// ErrStoreUnavailable: the state store could not be opened.
 	ErrStoreUnavailable = errors.New("install: state store unavailable")
@@ -142,11 +142,30 @@ type Options struct {
 	// Tests inject a store (":memory:" or a temp file) and manage its life.
 	Store store.Store
 
-	// RepoURL is the platform git repository (CLI positional arg; must
-	// already exist WITH content — ADR-0005's no-init rule for now).
+	// Repository URL/branch (the CLI positional arg + branch flag; branch
+	// "" → DefaultBranch).
 	RepoURL string
-	// Branch is the platform-repo branch ("" → DefaultBranch).
-	Branch string
+	Branch  string
+
+	// Init is the `--init` flag (T-212, ADR-0005's repo-initialization
+	// clause): when the configured remote resolves EMPTY, seed it from the
+	// embedded platform-repo template (examples/platform-repo) and push one
+	// initial commit. Default (false) = bring-your-own-repo: the install
+	// touches the remote with nothing but `git ls-remote` — zero changes,
+	// tested. See internal/install/repo_init.go for the credential model.
+	Init bool
+	// InitToken is the one-time write credential for the init push's
+	// askpass transport (https remotes). The CLI reads it from the
+	// TOP_INIT_TOKEN environment AT RUNTIME — never a flag, never a file
+	// TOP stores, never logged, never on argv (ADR-0008/0005).
+	InitToken string
+	// InitVersion stamps the seed commit message ("TOP <version>"); the
+	// CLI passes the build stamp.
+	InitVersion string
+	// InitAuthorName/InitAuthorEmail override the documented default
+	// commit identity (initAuthorNameDefault/initAuthorEmailDefault).
+	InitAuthorName  string
+	InitAuthorEmail string
 
 	// InstallDokku opts into the approval-gated Dokku bootstrap (phase 2).
 	InstallDokku bool
@@ -229,6 +248,15 @@ func (o *Options) applyDefaults() {
 	if o.Branch == "" {
 		o.Branch = DefaultBranch
 	}
+	if o.InitVersion == "" {
+		o.InitVersion = initVersionDefault
+	}
+	if o.InitAuthorName == "" {
+		o.InitAuthorName = initAuthorNameDefault
+	}
+	if o.InitAuthorEmail == "" {
+		o.InitAuthorEmail = initAuthorEmailDefault
+	}
 	if len(o.Namespaces) == 0 {
 		o.Namespaces = []string{"core", "observability"}
 	}
@@ -252,6 +280,28 @@ func (o *Options) applyDefaults() {
 			}
 		}
 	}
+}
+
+// initVersion stamps the seed commit message.
+func (o Options) initVersion() string {
+	if o.InitVersion == "" {
+		return initVersionDefault
+	}
+	return o.InitVersion
+}
+
+func (o Options) initAuthorName() string {
+	if o.InitAuthorName == "" {
+		return initAuthorNameDefault
+	}
+	return o.InitAuthorName
+}
+
+func (o Options) initAuthorEmail() string {
+	if o.InitAuthorEmail == "" {
+		return initAuthorEmailDefault
+	}
+	return o.InitAuthorEmail
 }
 
 // ControllerRef resolves the controller's qualified ref through the one

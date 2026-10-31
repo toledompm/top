@@ -1,0 +1,36 @@
+# TOP platform repo — controller seed spec (rendered by `topctl install
+# --init`, this exact file is committed to the brand-new platform repo).
+# Spec contract: docs/contracts/service-spec.md — strict parsing: unknown
+# fields fail loudly, so keep edits within the documented field set.
+#
+# The controller's own spec is just a Service. Its deploy is NOT touched
+# automatically: revisions of the controller are human-gated (ADR-0005) —
+# apply them with `topctl deploy core/top-controller`.
+#
+# {{CONTROLLER_IMAGE}} below is the only rendered placeholder: TOP fills it
+# with the pinned bootstrap image reference (internal/install's default is
+# ghcr.io/example/top/topctl:bootstrap-pinned). Digest-pinning is the
+# contract's recommendation; the installer's pinned default is the v0
+# bootstrap contract. All values here are fictional (ADR-0014 discipline).
+apiVersion: top/v1alpha1
+kind: Service
+metadata:
+  name: top-controller
+  namespace: core
+  annotations:
+    top/special: bootstrap
+spec:
+  source:
+    image: {{CONTROLLER_IMAGE}}
+  ports:
+    - { name: http, containerPort: 8080 }
+  routing:
+    mode: internal
+  healthcheck:
+    http: { path: /healthz, port: http }
+    intervalSeconds: 30
+  storage:
+    - { name: top-metadata, mountPath: /var/lib/top, size: 2Gi } # the controller's SQLite state mount (ADR-0005/0007)
+  env:
+    TZ: UTC
+  restartPolicy: always

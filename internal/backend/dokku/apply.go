@@ -694,6 +694,16 @@ func (c *Client) FailedLogs(ctx context.Context, ref domain.ServiceRef, lines in
 	if err != nil && !exec.IsExitCode(err, 1) {
 		return nil, wrapBackend("failed logs", app, err)
 	}
+	rows := splitLogLines(out)
+	if lines > 0 {
+		rows = rows[max(0, len(rows)-lines):]
+	}
+	return rows, nil
+}
+
+// splitLogLines is the shared log-output-to-lines shape: split on \n, drop
+// blank/whitespace-only lines, keep order (caller caps to `lines`).
+func splitLogLines(out string) []string {
 	var rows []string
 	for _, l := range strings.Split(out, "\n") {
 		l = strings.TrimRight(l, "\r")
@@ -701,8 +711,37 @@ func (c *Client) FailedLogs(ctx context.Context, ref domain.ServiceRef, lines in
 			rows = append(rows, l)
 		}
 	}
+	return rows
+}
+
+// ServiceLogs implements backend.PlatformBackend (T-308): `logs <app>
+// --num N` (dokku logs docs: recent app output), redacted upstream, split
+// to lines and truncated to the most recent `lines` (lines<=0 → the
+// DefaultServiceLogLines cap). A missing app is ErrNotFound; exit-1 (no
+// log output at all) is empty-success.
+func (c *Client) ServiceLogs(ctx context.Context, ref domain.ServiceRef, lines int) ([]string, error) {
+	ref, app, err := resolve(ref)
+	if err != nil {
+		return nil, err
+	}
+	exists, err := c.existsApp(ctx, "service logs", app)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, domain.NewNotFound("dokku app", ref.String())
+	}
+	args := []string{"logs", app}
 	if lines > 0 {
-		rows = rows[max(0, len(rows)-lines):]
+		args = append(args, "--num", fmt.Sprintf("%d", lines))
+	}
+	out, err := c.run(ctx, "service logs", app, readTimeout, args...)
+	if err != nil && !exec.IsExitCode(err, 1) {
+		return nil, wrapBackend("service logs", app, err)
+	}
+	rows := splitLogLines(out)
+	if lines > 0 && len(rows) > lines {
+		rows = rows[len(rows)-lines:]
 	}
 	return rows, nil
 }

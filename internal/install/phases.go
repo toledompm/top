@@ -242,7 +242,7 @@ func dryRunPlan(opts Options) []string {
 		"0-preflight: run doctor + installer checks (read-only)",
 		"1-inventory: snapshot host state → ledger as pre-existing (no writes in dry-run)",
 		"2-dokku-setup: " + dokkuSetupPlan(opts),
-		"3-platform-wiring: dirs " + dirsPlan(opts.DataDir) + "; network " + InternalNetwork + "; deploy key: " + deployKeyPlan(opts),
+		"3-platform-wiring: dirs " + dirsPlan(opts.DataDir) + "; network " + InternalNetwork + "; deploy key: " + deployKeyPlan(opts) + repoInitPlan(opts),
 		"4-bootstrap-deploy: storage entry " + StorageEntryName + " → app " + opts.ControllerAppName() + " ← " + opts.ImageRef() + "; bounded health wait",
 		"5-report: created/adopted/left-alone/checked + next commands",
 	}
@@ -264,6 +264,18 @@ func deployKeyPlan(opts Options) string {
 		return "operator-supplied path REQUIRED in v0 (generation is M3)"
 	}
 	return "copy operator-supplied " + opts.DeployKey + " → <dataDir>/git/deploy_key (0600)"
+}
+
+// repoInitPlan appends the --init clause to the printed phase-3 plan (dry-
+// run only mutates nothing; the plan is honest about what the real run
+// would push).
+func repoInitPlan(opts Options) string {
+	if !opts.Init {
+		return ""
+	}
+	cred := "the one-time credential from the environment (TOP_INIT_TOKEN), or the deploy-key path for ssh remotes"
+	return "; --init: if the remote resolves EMPTY, seed the embedded platform-repo template and push ONE commit (identity " +
+		initAuthorNameDefault + " <" + initAuthorEmailDefault + ">; " + cred + "; never creates the remote)"
 }
 
 // --- the uniform phase-operation wrapper ----------------------------------------
@@ -468,10 +480,13 @@ type RepoErr struct {
 func (e *RepoErr) Error() string { return e.Message }
 
 // checkRepo validates the platform repo: reachable, branch non-empty
-// (`git ls-remote <url> <branch>`; read-only). Missing or empty → the
-// clean, instruction-bearing error. `--init` repo creation is T-212/M3
-// and deliberately absent: install never creates, pushes, or
-// initializes the repo (ADR-0005).
+// (`git ls-remote <url> <branch>`; read-only). Missing/unreachable →
+// the clean, instruction-bearing error in BOTH modes: --init pushes into a
+// remote the operator created empty — topctl never creates the remote
+// (provider-API creation is deliberately v0-deferred, ADR-0005 "provider
+// permitting"). Empty → an error without --init (ADR-0005's existing-repo
+// rule; install changes nothing on the remote), but the sanctioned
+// precondition of `--init` (the seed flow, internal/install/repo_init.go).
 func checkRepo(ctx context.Context, opts Options) error {
 	url, branch := opts.RepoURL, opts.Branch
 	_, _, err := opts.Runner.Run(ctx, "git", "ls-remote", url, branch)
@@ -482,9 +497,13 @@ func checkRepo(ctx context.Context, opts Options) error {
 			Hint:    "install git (the gated dokku bootstrap brings it along, or `sudo apt-get install -y git`)",
 		}
 	case err != nil:
+		hint := "create the repo (empty is fine for --init) and push at least one commit to " + branch + ", or correct the URL. TOP never auto-creates the remote (ADR-0005: provider-API creation is a documented v0 deferral)."
+		if !opts.Init {
+			hint = "create the repo and push at least one commit to " + branch + ", or correct the URL — or, with an EMPTY remote: re-run with --init to seed TOP's platform-repo template (ADR-0005)."
+		}
 		return &RepoErr{
 			Message: fmt.Sprintf("platform repo %s is not reachable: %v", url, err),
-			Hint:    "create the repo and push at least one commit to " + branch + ", or correct the URL. (--init-driven repo creation is T-212/M3; install never auto-creates the repo — ADR-0005.)",
+			Hint:    hint,
 		}
 	}
 	// Exit 0: for the branch pattern, exit-0 with empty stdout means the
@@ -492,9 +511,12 @@ func checkRepo(ctx context.Context, opts Options) error {
 	// branch.
 	out, _, _ := opts.Runner.Run(ctx, "git", "ls-remote", url, branch)
 	if strings.TrimSpace(string(out)) == "" {
+		if opts.Init {
+			return nil // empty is exactly what --init seeds (freshly re-verified in phase 3)
+		}
 		return &RepoErr{
 			Message: fmt.Sprintf("platform repo %s resolved, but branch %q has no commits (empty) — refusing to bootstrap from it", url, branch),
-			Hint:    "push the initial platform-repo content (services, spec) and re-run. `topctl install --init` lands in T-212/M3; the installer never auto-creates repos (ADR-0005).",
+			Hint:    "push the initial platform-repo content (services, spec) and re-run — or, for a greenfield host, re-run with --init: TOP seeds the embedded platform-repo template and pushes one commit (ADR-0005; the install never silently auto-creates).",
 		}
 	}
 	return nil
@@ -537,7 +559,9 @@ func readableFile(path string) error {
 // validateRepoURL refuses non-URL-ish repo arguments early (the CLI's
 // usage gate): scheme'd URLs or scp-like "git@host:path" only — "does the
 // arg plausibly name a remote" is the check; reachability is phase 0's job.
-var repoURLOrSCP = regexp.MustCompile(`^(https?://|ssh://|git://)|^[^@\s]+@[^:\s]+:[^\s]+$`)
+// file:// is accepted: a filesystem git remote is a legitimate transport
+// (and the tier-1 test double for a provider remote — no containers).
+var repoURLOrSCP = regexp.MustCompile(`^(https?://|file://|ssh://|git://)|^[^@\s]+@[^:\s]+:[^\s]+$`)
 
 func validateRepoURL(url string) error {
 	if url == "" {

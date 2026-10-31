@@ -42,9 +42,15 @@ func TestExitCodeContract(t *testing.T) {
 	}{
 		// read-only stubs → 0 with the stub envelope
 		{"status", []string{"status"}, ExitOK},
-		{"diff", []string{"diff"}, ExitOK},
 		{"history", []string{"history", "core/prometheus"}, ExitOK},
-		{"logs", []string{"logs", "prometheus"}, ExitOK},
+		// history is REAL since T-309: absent state = honest empty read,
+		// exit 0 (its store-backed tests live in recon_test.go). diff /
+		// reconcile / deploy are REAL since T-309 too and touch git/the
+		// backend — their runner-faked rows live in recon_test.go instead
+		// of this machine-independent table.
+		// logs is REAL since T-308 (its exit mapping lives in logs_test.go
+		// against the fake runner — a no-runner run would touch the real
+		// backend, so it keeps no row here).
 		{"backup-list", []string{"backup", "list"}, ExitOK},
 		{"backup-verify", []string{"backup", "verify"}, ExitOK},
 		{"version", []string{"version"}, ExitOK},
@@ -58,8 +64,9 @@ func TestExitCodeContract(t *testing.T) {
 		// the findings space — deterministic on hosts without root).
 		{"install-bad-repo", []string{"install", "github.com/example/top", "--confirm"}, ExitUsage},
 		{"uninstall-no-state", []string{"uninstall", "--confirm"}, ExitDrift},
-		{"reconcile", []string{"reconcile"}, ExitFailed},
-		{"deploy", []string{"deploy", "core/prometheus"}, ExitFailed},
+		// reconcile/deploy got real bodies in T-309: the faked exit rows
+		// (happy/failed/lease/store) live in recon_test.go; the no-store
+		// reconcile row they replaced here would open a real pipeline.
 		{"backup-create-confirmed", []string{"backup", "create", "--confirm"}, ExitFailed},
 		// recover's four confirmed rows live in recover_test.go — the
 		// bodies are real (M2), pinned against a FakeRunner there.
@@ -107,7 +114,7 @@ func TestExitCodeContract(t *testing.T) {
 // untouched stubs keep the exact same discipline.)
 func TestStubEnvelopesAreVersioned(t *testing.T) {
 	t.Parallel()
-	for _, cmd := range []string{"status", "diff", "backup list"} {
+	for _, cmd := range []string{"status", "backup list"} {
 		args := strings.Fields(cmd)
 		outS, _, code := runCLI(t, false, "", append(args, "-o", "json")...)
 		if code != ExitOK {
