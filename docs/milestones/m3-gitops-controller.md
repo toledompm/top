@@ -1,6 +1,13 @@
 # Milestone 3 — GitOps controller and workload deployment
 
-> ## M3 review (T-311, 2026-10-31, pre-owner sign-off)
+> ## M3 review (T-311, 2026-10-31, **APPROVED** by owner)
+>
+> **Owner verdict (2026-10-31)**: Milestone 3 approved — amendments
+> accepted, review record accepted. CI proposal (a) is resolved: the
+> idempotency invariant (`TestReconcileDriftThenEmptyDiff`) runs in the
+> standard CI test job (`go test ./... -race`), no workflow change
+> needed. CI proposal (c) (laws job → required instead of optional)
+> remains an open owner decision, tracked in the backlog.
 >
 > **Fleet result**: T-301/T-303/T-304 + T-305..T-307 (Wave A, `8a4f4a0`),
 > T-302/T-308/T-309/T-212 (Wave B, `8b1faa3`), docs/ADR pass + acceptance
