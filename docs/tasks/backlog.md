@@ -261,3 +261,21 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
 Post-v0 note: T-602 is unaffected by T-113; if ADR-0015 is accepted, more
 laws (ordering acyclicity, ledger invariants, restore safeguards) land in
 M3–M5 review doc, never open at merge time.
+
+## Upkeep (between milestones; spawned at owner request)
+
+- **T-399 Dead-code + docs upkeep pass (post-M3).** Whole-repo sweep for:
+  unused helpers/types/files (golangci-lint `unused` + manual review of
+  exported-but-unreferenced surfaces), stub-era vestiges (e.g. `tools/tools.go`
+  if the Makefile/AGENTS.md workflows no longer require its pins — verify how
+  gofumpt/golangci-lint are actually invoked before removing), dead test
+  helpers, README/doc drift vs code truth (package READMEs + contracts row
+  spot-checks). Rules: every removal justified in the report (grep-verified
+  zero references); tests stay green (full -race matrix + tier-3 NOT
+  required for removals; conformance/laws/hygiene gates still run);
+  fake/fixture code never counted dead while its harness is in flight.
+  Deps: M3 review. AC: matrix green post-pass; a short removals table in
+  the report; no behavior change. Tests: existing. Refs: ADR-0014, AGENTS.md
+  §5. Risk: none. Approval: none (non-destructive; deletions revert via
+  git). Agent: review + core-go.
+
