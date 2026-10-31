@@ -131,8 +131,3 @@ type Finding struct {
 func IsTOPManaged(labels map[string]string) bool {
 	return labels[LabelManaged] == ManagedTrue
 }
-
-// IsTOPLabelKey reports whether a label key lives in the top.dev/ space.
-func IsTOPLabelKey(key string) bool {
-	return len(key) > len(LabelPrefix) && key[:len(LabelPrefix)] == LabelPrefix
-}

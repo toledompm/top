@@ -1,11 +1,14 @@
 # internal/cli
 
-The complete `topctl` command tree (docs/contracts/cli.md, ADR-0011). In
-Milestone 1 every command from the contract table exists as a **validated
-stub**: it parses and validates its flags and arguments, loads TOP's
-runtime config via `internal/config`, honors the global flags, and prints
-the versioned output envelope. No stub touches the store or the exec
-layer — that wiring is M2/M3 work (see "How stubs get replaced" below).
+The complete `topctl` command tree (docs/contracts/cli.md, ADR-0011).
+Introduced in Milestone 1 as **validated stubs**, most bodies are real
+after M2/M3 (doctor, install, uninstall, recover, logs, diff, reconcile,
+deploy, history, controller run — see the task notes in `cli_test.go`
+for who landed when). The commands that remain stubs (`status`, the
+`backup` group) still parse and validate flags and arguments, load TOP's
+runtime config via `internal/config`, honor the global flags, and print
+the versioned output envelope without touching the store or the exec
+layer (see "How stubs get replaced by M2/M3 service wiring" below).
 
 ## Layout
 
@@ -26,21 +29,24 @@ layer — that wiring is M2/M3 work (see "How stubs get replaced" below).
 ldflags-injected build stamp. `ExitError{Code}` carries the contract exit
 code through `RunE` into `Execute`'s single mapping point:
 
-- read-only stubs (status, diff, history, backup list/verify) → **0**
-  with the stub envelope (`recover diagnose` left the stub set in M2 —
-  it now renders a real internal/recover report in the doctor
-  vocabulary, exit 0/1 like doctor; `logs` left it in T-308 — real
-  body + readiness compose, see logs_test.go for its exit rows),
-- mutating stubs (install, uninstall, reconcile, deploy, backup create, controller run) → **3**
+- read-only stubs (status, backup list/verify) → **0** with the stub
+  envelope (diff and history left the stub set in T-309 — diff is the
+  read-only computed plan, history reads the operation ledger, both via
+  `reconcmd.go`; `recover diagnose` left in M2 — it now renders a real
+  internal/recover report in the doctor vocabulary, exit 0/1 like
+  doctor; `logs` left it in T-308 — real body + readiness compose, see
+  logs_test.go for its exit rows),
+- mutating stubs (backup create) → **3**
   ("operation failed" in the contract code space: the invocation was
   well formed, the operation cannot succeed today; 2 is reserved for the
   caller's mistake),
 - invalid usage/validation → **2** with an error envelope and a
   `--help` hint,
-- ExitDrift (1) now HAS a producer (`topctl doctor` failures and, since
-  M2, `topctl recover diagnose` failures); ExitUnreachable (4) is still
-  contract-reserved. The constants are the contract's single source of
-  truth.
+- ExitDrift (1) now HAS producers (`topctl doctor` failures and, since
+  M2, `topctl recover diagnose` failures; `topctl diff` drift is also 1
+  since T-309). ExitUnreachable (4) has producers too since T-308/309
+  (backend/store/git unavailability rows). The constants are the
+  contract's single source of truth.
 
 JSON output is always one compact line:
 `{"schemaVersion":1,"command":"status","message":"not implemented: planned M2/M3"}`.
@@ -57,8 +63,8 @@ code `not-implemented` distinguishes it from a real M2-era failure.
 
 ## Confirmation scaffolding
 
-Gated commands (install, uninstall, backup create, plus reconcile when
-`--prune` or `--include-controller` is set; recover
+Gated commands (install, uninstall, backup create; reconcile requires it
+when `--prune` or `--include-controller` is set; recover
 restart/redeploy/restore are gated too — real in M2, same knot) call
 `cctx.requireConfirm`:
 
@@ -82,7 +88,9 @@ needed — see `TestConfirmPromptPaths`.
 
 ## How stubs get replaced by M2/M3 service wiring
 
-Each command in `stubs.go` is a thin closure around `cctx` with exactly
+(Remaining for the `backup` group; the already-real bodies below
+describe the pattern that replaces them.) Each command in `stubs.go` is
+a thin closure around `cctx` with exactly
 three responsibilities left to add: construct the M2/M3 application
 service (store/backend/reconciler/recover), call it, and map typed
 domain errors onto `ExitError` codes. The pieces that should *not*

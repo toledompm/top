@@ -189,16 +189,6 @@ func mustRead(path string) []byte {
 	return b
 }
 
-// ShimResponse is one canned response for the shim registry when it is not
-// installed from a Fixture's exact argv: either all calls of one subcommand
-// (Subcommand, e.g. "apps:list") or all calls of one subcommand family
-// (Family, e.g. "apps" — the part of the first arg before ':').
-type ShimResponse struct {
-	Subcommand string // registry prefix subcmd.<Sub>.*
-	Family     string // registry prefix prefix.<Family>.*
-	Fixture    Fixture
-}
-
 // WriteShimFixtures writes each fixture into dir under its exact-signature
 // key (dir/<sig>.stdout, .stderr, .exit), creating dir. A fixture whose exit
 // is 0 with empty output still gets an explicit .exit file so the registry

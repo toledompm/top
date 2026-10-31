@@ -147,8 +147,8 @@ func (f *FakeRunner) SetScriptedPrefix(prefix []string, script []Response, tail 
 	f.nextSeqEntry++
 }
 
-// Reset clears all canned responses and the call log, keeping the fake
-// reusable between table-test cases.
+// Reset clears all canned responses, scripts, and the call log, keeping
+// the fake reusable between table-test cases.
 func (f *FakeRunner) Reset() {
 	f.mu.Lock()
 	defer f.mu.Unlock()

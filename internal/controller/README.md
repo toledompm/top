@@ -77,7 +77,7 @@ func Serve(o Options) error
 ```
 
 signal-aware wrapper around `Daemon.Run(ctx)`: returns nil on SIGINT/SIGTERM,
-the fatal server error otherwise. Wave C's `topctl controller start` builds
+the fatal server error otherwise. The `topctl controller run` command builds
 `OptionsFromConfig`, fills `Reconciler` (reconcile.New), `Store` (sqlite),
 `Source` (gitsource.New), `Secret` (webhook-hmac SecretProvider, ADR-0008) and
 calls `Serve`.

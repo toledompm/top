@@ -194,9 +194,6 @@ func (o *Operation) Start() error { return o.Next(OpRunning) }
 // Succeed moves to succeeded.
 func (o *Operation) Succeed() error { return o.Next(OpSucceeded) }
 
-// Abort moves to aborted (cancellation or supersession).
-func (o *Operation) Abort() error { return o.Next(OpAborted) }
-
 // Fail moves to failed and records the redacted error string. Empty error
 // text is rejected — a failure record must explain itself.
 func (o *Operation) Fail(redactedErr string) error {

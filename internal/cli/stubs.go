@@ -36,12 +36,15 @@ func (c *cctx) orRunner() exec.Runner {
 	return exec.NewFastExec()
 }
 
-// Every command from the docs/contracts/cli.md table is defined here as a
-// *validated stub*: flags parse, arguments and flag values validate
-// against internal/domain, config is loaded (root persistentPreRun), and
-// the command prints the versioned envelope. No stub touches the store,
-// exec layer, or host — see internal/cli/README.md for how M2/M3 replaces
-// each body with a service call behind the identical flag surface.
+// Command bodies (the file keeps its M1 name; most bodies are real now).
+// What remains a *validated stub* here: `status` and the `backup` group.
+// Real bodies: doctor, install, uninstall, logs, recover, controller run,
+// plus the T-309 reconcile family in reconcmd.go. Stubs parse and
+// validate flags and arguments against internal/domain, load config
+// (root persistentPreRun), and print the versioned envelope; no stub
+// touches the store, exec layer, or host. See internal/cli/README.md for
+// how the remaining bodies get their service wiring behind the identical
+// flag surface.
 
 // newVersionCmd is the one command that is fully real in M1: it prints
 // build info and support floors (read-only, exit 0).

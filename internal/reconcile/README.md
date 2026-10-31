@@ -111,8 +111,6 @@ No dokku, no git, no HTTP — per docs/architecture/testing-strategy.md.
 
 ## Open items
 
-- T-309: `DiffReport`/`ServiceDiff` (`RunResult.DiffReport`) is the report
-  shape candidates; spec sources come in via `RunInput.Sources`.
 - T-310: the run-entry canon — holder id default, exit codes
   (LeaseConflict → code, validation → code), and whether a
   lease-blocked run should append a history row.
