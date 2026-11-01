@@ -1,36 +1,44 @@
-# TOP platform repo — controller seed spec (rendered by `topctl install
-# --init`, this exact file is committed to the brand-new platform repo).
+# TOP platform repo — controller spec (seeded by `topctl install --init`;
+# this exact file is committed to the brand-new platform repo).
 # Spec contract: docs/contracts/service-spec.md — strict parsing: unknown
 # fields fail loudly, so keep edits within the documented field set.
 #
 # The controller's own spec is just a Service. Its deploy is NOT touched
 # automatically: revisions of the controller are human-gated (ADR-0005) —
-# apply them with `topctl deploy core/top-controller`.
+# apply new revisions with `topctl deploy core/top-controller`.
 #
-# {{CONTROLLER_IMAGE}} below is the only rendered placeholder: TOP fills it
-# with the pinned bootstrap image reference (internal/install's default is
-# ghcr.io/example/top/topctl:bootstrap-pinned). Digest-pinning is the
-# contract's recommendation; the installer's pinned default is the v0
-# bootstrap contract. All values here are fictional (ADR-0014 discipline).
+# {{CONTROLLER_IMAGE}} below is the template's ONLY existential placeholder:
+# TOP fills it at seed time with the pinned bootstrap image reference
+# (internal/install's default is ghcr.io/example/top/topctl:bootstrap-pinned).
+# Digest-pinning is the contract's recommendation; the installer's pinned
+# default is the v0 bootstrap contract. Every other value is fictional
+# (ADR-0014 discipline): replace domains with your own before relying on
+# public reachability.
 apiVersion: top/v1alpha1
 kind: Service
 metadata:
   name: top-controller
   namespace: core
   annotations:
-    top/special: bootstrap
+    top/special: bootstrap # human-gated self-update marker (ADR-0005)
 spec:
   source:
     image: {{CONTROLLER_IMAGE}}
   ports:
-    - { name: http, containerPort: 8080 }
+    - { name: http, containerPort: 8080 } # the controller HTTP surface (internal/controller: /webhooks/github, /healthz, /metrics on :8080)
   routing:
-    mode: internal
+    mode: proxy # webhooks must reach the controller from Git providers; nginx fronts :8080
+    domains:
+      - top.example.com # PLACEHOLDER for the operator: your controller host
   healthcheck:
-    http: { path: /healthz, port: http }
+    http: { path: /healthz, port: http } # Dokku zero-downtime check on the liveness endpoint
     intervalSeconds: 30
   storage:
     - { name: top-metadata, mountPath: /var/lib/top, size: 2Gi } # the controller's SQLite state mount (ADR-0005/0007)
   env:
     TZ: UTC
+  resources:
+    limits:
+      cpu: 250m # small-host default: reconcile runs are short; see README
+      memory: 256Mi
   restartPolicy: always

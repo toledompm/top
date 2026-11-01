@@ -1,27 +1,38 @@
-# observability/prometheus.yaml — prometheus-READY, commented example
-# service (v0 template: the platform repo ships with the controller seed
-# only; enable monitoring by uncommenting this whole file after pinning an
-# image digest you actually want to run). Spec shape per
-# docs/contracts/service-spec.md; the digest below is fictional.
+# observability/prometheus.yaml — the metrics stack (ADR-0010).
+# A plain TOP-managed Service like any other: Dokku/Docker keep it up
+# whether or not the controller exists; nothing in reconcile reads it
+# (observability independence, ADR-0010).
 #
-# apiVersion: top/v1alpha1
-# kind: Service
-# metadata:
-#   name: prometheus
-#   namespace: observability
-# spec:
-#   source:
-#     image: docker.io/prom/prometheus
-#     digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef   # fictional — pin a real digest before enabling
-#   ports:
-#     - { name: http, containerPort: 9090 }
-#   routing:
-#     mode: internal # reachable by grafana over the shared top-internal network, not exposed
-#   healthcheck:
-#     http: { path: /-/healthy, port: http }
-#     intervalSeconds: 30
-#   storage:
-#     - { name: data, mountPath: /prometheus, size: 2Gi }
-#   env:
-#     TZ: UTC
-#   restartPolicy: always
+# The digest below is FICTIONAL — a valid-shape zero digest standing in for
+# a real pin. Replace it with a digest you actually want to run before
+# enabling this service on a host.
+#
+# Retention & config: the small-host retention flags and the scrape config
+# file live in prometheus-config/ (see its header and the README); wiring
+# the config file into the container is the documented T-403 follow-up.
+# See README section "T-403 handoff" for exactly what must be filled.
+apiVersion: top/v1alpha1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: observability
+spec:
+  source:
+    image: docker.io/prom/prometheus
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000 # fictional — pin a real digest before deploying
+  ports:
+    - { name: http, containerPort: 9090 }
+  routing:
+    mode: internal # reachable by grafana over the shared dokku network, not exposed
+  healthcheck:
+    http: { path: /-/healthy, port: http }
+    intervalSeconds: 30
+  storage:
+    - { name: data, mountPath: /prometheus, size: 2Gi }
+  env:
+    TZ: UTC
+  resources:
+    limits:
+      cpu: 500m # small-host default; see README "small-host defaults"
+      memory: 512Mi
+  restartPolicy: always

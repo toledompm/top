@@ -526,7 +526,7 @@ func TestInitIntegrationRealGitRemote(t *testing.T) {
 
 	// The created list claims exactly one seeded commit.
 	if !slices.ContainsFunc(res.Created, func(s string) bool {
-		return strings.HasPrefix(s, "platform-repo seed commit pushed to file://"+remote) && strings.Contains(s, "3 file(s)")
+		return strings.HasPrefix(s, "platform-repo seed commit pushed to file://"+remote) && strings.Contains(s, "10 file(s)")
 	}) {
 		t.Errorf("created list must carry the seed push: %v", res.Created)
 	}
@@ -563,8 +563,8 @@ func TestTemplateRenderIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n1 != n2 || n1 != 3 {
-		t.Errorf("rendered file count: %d vs %d (want 3: README + 2 yaml)", n1, n2)
+	if n1 != n2 || n1 != 10 {
+		t.Errorf("rendered file count: %d vs %d (want 10: README + 5 specs + prometheus config + 3 grafana provisioning files)", n1, n2)
 	}
 	trees := []map[string]string{}
 	for _, dir := range []string{a, b} {

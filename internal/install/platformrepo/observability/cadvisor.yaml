@@ -1,0 +1,31 @@
+# observability/cadvisor.yaml — per-container metrics (ADR-0010: justified
+# because Dokku apps are plain Docker containers; without cAdvisor there is
+# no per-app resource view).
+# The digest below is FICTIONAL; replace with a real pin before deploying.
+apiVersion: top/v1alpha1
+kind: Service
+metadata:
+  name: cadvisor
+  namespace: observability
+spec:
+  source:
+    image: gcr.io/cadvisor/cadvisor
+    digest: sha256:3333333333333333333333333333333333333333333333333333333333333333 # fictional — pin a real digest before deploying
+  ports:
+    - { name: http, containerPort: 8080 }
+  routing:
+    mode: internal # scraped by prometheus over the dokku network only
+  healthcheck:
+    http: { path: /healthz, port: http }
+    intervalSeconds: 30
+  env:
+    TZ: UTC
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  restartPolicy: always
+  # NOTE (T-403 wiring, not expressible in v0 spec fields): cAdvisor reads
+  # the host docker socket and cgroups; it needs read-only host-path mounts
+  # (/var/run/docker.sock or the dockersocket proxy, /sys, /var/lib/docker,
+  # /cgroup per host) via Dokku docker-options. See README "T-403 handoff".

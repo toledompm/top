@@ -1,0 +1,30 @@
+# observability/node-exporter.yaml — host metrics (ADR-0010 stack).
+# The digest below is FICTIONAL; replace with a real pin before deploying.
+apiVersion: top/v1alpha1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: observability
+spec:
+  source:
+    image: quay.io/prometheus/node-exporter
+    digest: sha256:2222222222222222222222222222222222222222222222222222222222222222 # fictional — pin a real digest before deploying
+  ports:
+    - { name: http, containerPort: 9100 }
+  routing:
+    mode: internal # scraped by prometheus over the dokku network only
+  healthcheck:
+    http: { path: /-/healthy, port: http }
+    intervalSeconds: 30
+  env:
+    TZ: UTC
+  resources:
+    limits:
+      cpu: 100m
+      memory: 64Mi
+  restartPolicy: always
+  # NOTE (T-403 wiring, not expressible in v0 spec fields): node_exporter
+  # needs host-path mounts (--path.procfs=/host/proc, --path.sysfs=/host/sys,
+  # plus rootfs) and host networking. The mounts go through Dokku
+  # docker-options pointing at TOP-owned read-only host paths; the exact
+  # mechanism is documented in the README "T-403 handoff" section.

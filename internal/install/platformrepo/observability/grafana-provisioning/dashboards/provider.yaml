@@ -1,0 +1,17 @@
+# Grafana dashboard *provider* provisioning: where dashboard JSON files are
+# looked up. The dashboards themselves live next to this file (mounted at
+# /var/lib/grafana/dashboards via the grafana spec's dashboard storage).
+# See the platform README "T-403 handoff" for wiring mechanics.
+apiVersion: 1
+
+providers:
+  - name: top
+    orgId: 1
+    folder: TOP
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true # the provider-name yields to local UI edits on a single-operator box
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

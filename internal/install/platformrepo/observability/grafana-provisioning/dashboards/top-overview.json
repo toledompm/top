@@ -1,0 +1,156 @@
+{
+  "title": "TOP — controller overview",
+  "uid": "top-overview",
+  "tags": ["top"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "editable": true,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "description": "ADR-0010 TOP controller dashboard. Uses only the internal/obs metric set (real names); prometheus datasource uid 'prometheus' from grafana-provisioning/datasources/.",
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(top_service_drift, service)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Reconcile health",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "Reconcile runs by outcome",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (result) (rate(top_reconcile_total[5m]))", "legendFormat": "{{result}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Reconcile duration p95",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum(rate(top_reconcile_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Last successful reconcile",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 9 },
+      "targets": [
+        { "refId": "A", "expr": "top_last_successful_reconcile_timestamp", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "dateTimeAsIso", "thresholds": { "mode": "absolute", "steps": [] } }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "title": "Build info",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 9 },
+      "targets": [
+        { "refId": "A", "expr": "top_build_info", "instant": true, "format": "table" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Drifted services",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 9 },
+      "targets": [
+        { "refId": "A", "expr": "sum(top_service_drift)", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "SQL backup last success",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 9 },
+      "targets": [
+        { "refId": "A", "expr": "top_backup_last_success_timestamp", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "dateTimeAsIso", "thresholds": { "mode": "absolute", "steps": [] } }, "overrides": [] }
+    },
+    {
+      "id": 8,
+      "title": "Git sync",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }
+    },
+    {
+      "id": 9,
+      "title": "Git polls by outcome",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (result) (rate(top_git_poll_total[5m]))", "legendFormat": "{{result}}" }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Git poll duration p95",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum(rate(top_git_poll_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Webhook deliveries by event/result",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (event, result) (rate(top_webhook_deliveries_total[5m]))", "legendFormat": "{{event}}/{{result}}" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "SQLite operations p95",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum(rate(top_sqlite_operation_duration_seconds_bucket[5m])) by (le, operation))", "legendFormat": "{{operation}}" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Deploys per service",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (service, result) (rate(top_deploy_total[5m]))", "legendFormat": "{{service}}/{{result}}" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+# observability/grafana.yaml — dashboards (ADR-0010).
+# Grafana's admin password is the first real consumer of secretRefs
+# (ADR-0008/0010): the secret name `grafana-admin-password` is resolved from
+# the host secret store at apply time (`topctl secrets set`) and injected
+# into the container env as the admin password (never a value in Git; the
+# ref→env-var-name mechanic is part of the documented T-403 follow-up).
+#
+# The digest below is FICTIONAL; replace with a real pin before deploying.
+apiVersion: top/v1alpha1
+kind: Service
+metadata:
+  name: grafana
+  namespace: observability
+spec:
+  source:
+    image: docker.io/grafana/grafana
+    digest: sha256:1111111111111111111111111111111111111111111111111111111111111111 # fictional — pin a real digest before deploying
+  ports:
+    - { name: http, containerPort: 3000 }
+  routing:
+    mode: proxy
+    domains:
+      - grafana.example.com # PLACEHOLDER for the operator: your dashboards host
+  healthcheck:
+    http: { path: /api/health, port: http }
+    intervalSeconds: 30
+  storage:
+    # Container mount points only — the reconciler binds them to TOP-owned
+    # host paths at /var/lib/top (naming convention internal/install); exact
+    # host path mechanics are the documented T-403 follow-up.
+    - { name: grafana-data, mountPath: /var/lib/grafana, size: 1Gi }
+    # Provisioning tree from this repo (datasources/ + dashboards/):
+    - { name: grafana-provisioning, mountPath: /etc/grafana/provisioning }
+    # Dashboard JSON also visible to the provisioning provider below:
+    - { name: grafana-dashboards, mountPath: /var/lib/grafana/dashboards }
+  env:
+    TZ: UTC
+    GF_SECURITY_ADMIN_USER: admin # the username is not a secret
+    GF_SERVER_DOMAIN: grafana.example.com # keep in sync with routing.domains
+    GF_USERS_ALLOW_SIGN_UP: "false" # one operator, no self-registration
+  secretRefs:
+    - grafana-admin-password # ~ GF_SECURITY_ADMIN_PASSWORD (resolved at apply; ADR-0008)
+  dependsOn:
+    - prometheus # intra-namespace ordering hint (ADR-0004): datasource target exists first
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  restartPolicy: always

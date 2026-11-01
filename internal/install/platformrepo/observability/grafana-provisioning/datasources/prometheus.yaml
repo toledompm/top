@@ -1,0 +1,24 @@
+# Grafana datasource provisioning (mounted via the grafana spec's storage
+# entry "grafana-provisioning" at /etc/grafana/provisioning/datasources/).
+# Grafana reads files ending .yaml/.yml/.json here; the .yaml suffix is safe
+# in this directory because the ServiceSpec loader only walks repo files at
+# depth 1 and 2 (<ns>/<file>.yaml), never deeper (internal/spec/load.go).
+#
+# The datasource points at Prometheus over the dokku container network
+# (ADR-0010; grafana dependsOn prometheus in the spec). The URL uses the
+# dokku app name as the network address — if your deployment resolves the
+# app by a different name, T-403 wiring is the place to fix it (doc
+# placeholder, not an existential token: nothing renders this file).
+apiVersion: 1 # grafana provisioning API version
+
+datasources:
+  - name: Prometheus
+    uid: prometheus # referenced by UUID from every provisioned dashboard
+    type: prometheus
+    access: proxy
+    url: http://TODO-T403:9090 # TODO(T-403): prometheus container address
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s # match the prometheus scrape_interval
