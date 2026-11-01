@@ -56,7 +56,7 @@ func (r *Reconciler) applyAndGate(ctx context.Context, in RunInput, ordered []do
 				// so an unreadable one is a real defect and records as
 				// the outcome's failure, never a silent guess.
 				res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
-					Ref:  ref, Result: domain.OutcomeFailed,
+					Ref: ref, Result: domain.OutcomeFailed,
 					Err:  "adoption check: " + selfAdoptErr.Error(),
 					Hint: "the ownership ledger decides the controller-self posture; " + hintLogs,
 				})

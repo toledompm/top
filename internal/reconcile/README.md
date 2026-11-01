@@ -76,12 +76,26 @@ the lease; gate refusals surface per candidate in `RunResult.PruneRefusals`
 (`plan.ComputeAll` enforces; this package passes through). Deleted apps
 drop their ledger row after a successful destroy.
 
-## Controller-self special case (ADR-0005/0006)
+## Controller-self special case (ADR-0005/0006, adoption-aware since T-402)
 
-The `core/top-controller` ref is report-only in this wave: plan drift on
-it → outcome `skipped`/`self-drift-reported` with the change list as the
-report; converged → `noop`. No apply path exists for it until the M4
-adopt path (T-172).
+The posture is keyed on the ownership ledger (`adoptedSelf`), read once
+per run (`internal/reconcile/adopt.go`); `RunResult.SelfAdopted` carries
+the judged posture:
+
+- **row missing or `bootstrap-owned`** (pre-handoff): drift on self →
+  outcome `skipped`/`self-drift-reported` with the change list as the
+  report; converged → `noop`. No apply path fires.
+- **row `managed`, revision/image drift**: outcome
+  `skipped`/`self-drift-reported` pointing at the human gate —
+  `topctl deploy core/top-controller` (T-406). The reconciler NEVER
+  applies a new image to its own process (a wedging self-deploy would
+  kill every future reconciliation, including the fix).
+- **row `managed`, field-only drift** (env/ports/domains/storage/
+  restart/networks): the adopted self converges like any other service —
+  `EnsureApp` is adopt-if-exists and none of those verbs carries an
+  image, so no redeploy can sneak in.
+- **noop self plan**: zero verbs — the anti-redeploy invariant's
+  strongest form (`TestAdoptSelfNoRedeployWhenSpecMatches`).
 
 ## Applying (what a service's apply does)
 

@@ -18,7 +18,8 @@ reconciliation never runs from this package (that's the M3 controller).
 | 2-dokku-setup | verify Dokku presence/health/version (≥ 0.38); `--install-dokku` runs the upstream bootstrap — `--confirm` required; sudo is *printed, never escalated* (ADR-0009) | mutating, gated |
 | 3-platform-wiring | create `$dataDir/{,secrets,git,backups}` (dirs 0700, files 0600), `EnsureNetwork(top-internal)`, deploy-key + pinned known_hosts into `$dataDir/git/` | mutating, gated |
 | 4-bootstrap-deploy | storage entry + mount for SQLite (`top-metadata`) → app `core-top-controller` ← pinned image (`--controller-image/--controller-tag`, defaults `ghcr.io/example/top/topctl:bootstrap-pinned`-format), bounded health wait; ledger marks `bootstrap-owned` | mutating, gated |
-| 5-report | created/adopted/left-alone + secrets-to-provision + next commands; exits 0 | read-only |
+| 5-first-reconcile | ONE reconciler pass over the seeded repo specs + the **ADR-0005 ownership handoff**: the controller app's ledger row converts `bootstrap-owned → managed` (`store.MarkManaged`). Adoption itself is a state conversion — no Dokku verb, no redeploy. Through the `Options.FirstRun` seam (`FirstRunner` in `adopt.go`; the composition root composes `gitsource` + `spec.LoadDir` + `reconcile.Run`). Missing controller spec, no handoff wired, or nothing recorded to adopt → **info finding**, the deployment stays `bootstrap-owned` and the next install **redoes phase 5** (completion is keyed on the adoption record, not the op state). Pre-existing row → typed `ErrAdoptionRefused`. Non-green first run → phase fails, the row is NOT flipped. Re-running after a successful adoption re-adopts nothing (op-record guard; `details["adoptedByOp"]` + `details["firstRunOp"]` live on the phase op). | mutating (store only), gated via `--confirm` |
+| 6-report | created/adopted/left-alone + secrets-to-provision + next commands; exits 0 | read-only |
 
 Teardown tiers (`topctl uninstall`): everything is **kept by default**;
 `--purge-data`, `--purge-secrets`, `--uninstall-dokku` each add their own
@@ -32,6 +33,13 @@ Deletions follow the **two-key rule** via
 
 - **dry-run zero-mutation**: `--dry-run` prints the full plan and runs no
   mutating verb (asserted on the call log + fs diff).
+- **anti-redeploy adoption**: the phase-5 handoff issues no host verb — an
+  install whose first run confirms the spec matches the bootstrap
+  deployment shows exactly ONE controller `git:from-image` (phase 4) in
+  the full call log and zero rebuild/restart/convergence verbs
+  (`TestInstallPhase5AdoptsAndRunsFirstReconcile`,
+  `TestInstallAdoptionRealPipeline` with the real gitsource+spec+reconcile
+  composition over a local file:// repo).
 - **idempotent resume**: an interrupted install (kill mid-phase-4, or a
   failed bootstrap with the `bootstrap-failed` ledger marker) re-runs to
   completion; completed phases are skipped via the operations records.
