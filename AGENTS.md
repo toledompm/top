@@ -42,6 +42,23 @@ examples/            fictional, committable example configs
 6. **Testing.** Unit tests are portable and hermetic. Anything needing a real
    Dokku host is gated behind an env flag (see docs/architecture/testing-strategy.md)
    and must default to a disposable environment, never the author's server.
+7. **Checkpoint discipline (for spawned agents).** Sessions end
+   unpredictably (usage limits) — treat the end of the current unit, not
+   the end of the task, as the reporting horizon. Concretely:
+   - **Commit per completed unit.** A "unit" is one green, self-contained
+     slice (e.g. one test file + its code, one doc section, one seam
+     change). After each unit: run the unit's gates, `git commit`, then
+     continue. Small green commits beat one large uncommitted pile — the
+     M3/M4 fleets showed agents can die with 100% finished work discarded
+     because it sat uncommitted.
+   - **Report early, then keep going.** A terse mid-session report (files
+     + status + what's next) is better than a perfect final report that a
+     dead session never sends.
+   - **Budget tail rule**: when close to limits, STOP writing new scope —
+     commit, run gates, and deliver the report for what exists.
+   - Handoff facts (semantics chosen, open seams, test names) belong in
+     the package README/commit message — never only in the final chat
+     message, and never in `.local/`.
 
 ## Conventions
 
