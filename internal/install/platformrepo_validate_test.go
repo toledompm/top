@@ -174,7 +174,7 @@ func TestTemplatePlaceholderDiscipline(t *testing.T) {
 	dir := renderTemplateIntoTemp(t)
 	// Uppercase-style tokens ONLY are existential; lowercase ones are
 	// Grafana legend syntax and documentation, never rendered.
-	var tokenRe = regexp.MustCompile(`\{\{[A-Z][A-Z0-9_]*\}\}`)
+	tokenRe := regexp.MustCompile(`\{\{[A-Z][A-Z0-9_]*\}\}`)
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, werr error) error {
 		if werr != nil {
 			return werr
