@@ -19,7 +19,7 @@ import (
 // contained: a failing service records failed (its last known-good keeps
 // serving), dependents skip with dependency-failed, independent services
 // continue.
-func (r *Reconciler) applyAndGate(ctx context.Context, in RunInput, ordered []domain.ServiceRef, pl domain.Plan, res *RunResult) {
+func (r *Reconciler) applyAndGate(ctx context.Context, in RunInput, ordered []domain.ServiceRef, pl domain.Plan, selfAdopted bool, selfAdoptErr error, res *RunResult) {
 	planByRef := make(map[domain.ServiceRef]domain.ServicePlan, len(pl.Services))
 	for _, sp := range pl.Services {
 		planByRef[sp.Ref] = sp
@@ -38,22 +38,49 @@ func (r *Reconciler) applyAndGate(ctx context.Context, in RunInput, ordered []do
 			// (Run checks ctx after the loop and fails the run).
 			return
 		}
-		// Controller-self special case (ADR-0005/0006): report-only until
-		// the M4 adopt path — the plan already renders drifted(self)/(or
-		// plain drift) on it; the reconciler never derives an apply.
+		// Controller-self special case (ADR-0005), adoption-aware
+		// (T-402; internal/reconcile/adopt.go documents the three shapes).
 		if ref.Equal(SelfRef) {
-			if sp, ok := planByRef[ref]; ok && !sp.Empty() && sp.Kind != domain.PlanNoop {
+			sp, ok := planByRef[ref]
+			if !ok || sp.Empty() || sp.Kind == domain.PlanNoop {
+				// Noop (the anti-redeploy proof: a spec matching the
+				// bootstrap deployment issues ZERO verbs against the app).
 				res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
-					Ref: ref, Result: domain.OutcomeSkipped, Skip: domain.SkipSelfDrift,
-					Changes: renderChanges(sp.Changes),
-					Hint:    "controller drift is report-only until the adopt path (M4)",
+					Ref: ref, Result: domain.OutcomeNoop,
 				})
 				continue
 			}
-			res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
-				Ref: ref, Result: domain.OutcomeNoop,
-			})
-			continue
+			if selfAdoptErr != nil {
+				// The adoption check itself could not read the store:
+				// contained — the ledger decides this run's self posture,
+				// so an unreadable one is a real defect and records as
+				// the outcome's failure, never a silent guess.
+				res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
+					Ref:  ref, Result: domain.OutcomeFailed,
+					Err:  "adoption check: " + selfAdoptErr.Error(),
+					Hint: "the ownership ledger decides the controller-self posture; " + hintLogs,
+				})
+				continue
+			}
+			if !selfAdopted {
+				res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
+					Ref: ref, Result: domain.OutcomeSkipped, Skip: domain.SkipSelfDrift,
+					Changes: renderChanges(sp.Changes),
+					Hint:    "controller drift is report-only until the bootstrap handoff (install's first-reconcile adoption, contract phase 5)",
+				})
+				continue
+			}
+			if selfNeedsHumanGate(sp) {
+				res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
+					Ref: ref, Result: domain.OutcomeSkipped, Skip: domain.SkipSelfDrift,
+					Changes: renderChanges(sp.Changes),
+					Hint:    "controller self-update is human-gated (ADR-0005): run `topctl deploy core/top-controller`; the reconciler reports image/revision drift on itself but never applies it",
+				})
+				continue
+			}
+			// Adopted, field-only drift: fall through to the normal
+			// per-service path (EnsureApp is adopt-if-exists; the drift
+			// carries no revision entry, so no deploy verb fires).
 		}
 		// A failed dependency skips this service (contract rule).
 		if blockedByFailed(ref, svcByRef, failed) {
@@ -71,7 +98,7 @@ func (r *Reconciler) applyAndGate(ctx context.Context, in RunInput, ordered []do
 			})
 			continue
 		}
-		if sp.Kind == domain.PlanDriftedSelf {
+		if sp.Kind == domain.PlanDriftedSelf && !ref.Equal(SelfRef) {
 			res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
 				Ref: ref, Result: domain.OutcomeSkipped, Skip: domain.SkipSelfDrift,
 				Changes: renderChanges(sp.Changes),

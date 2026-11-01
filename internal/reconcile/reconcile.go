@@ -32,9 +32,11 @@
 // two seams only: Backend and StateStore (see seam.go).
 //
 // Special cases honored (ADR-0005/0006): the controller-self service
-// (core namespace, name top-controller) is REPORT-ONLY this wave — drift
-// yields a skipped outcome with reason self-drift-reported; the M4 adopt
-// path (T-172) replaces that.
+// (core namespace, name top-controller) is adoption-aware (T-402): before
+// the ownership handoff its drift yields a skipped outcome with reason
+// self-drift-reported; after it the adopted self converges field drift
+// like any other service, while a revision/image drift stays the
+// human-gated deploy (adopt.go).
 package reconcile
 
 import (
@@ -52,8 +54,9 @@ import (
 )
 
 // SelfRef is TOP's own controller service (ADR-0005/0006): specs in the
-// core namespace resolving to this ref are report-only until the M4 adopt
-// path.
+// core namespace resolving to this ref are special-cased — report-only
+// until the bootstrap handoff (T-402, adoption in the ledger), then
+// field-converging with the image/revision change still human-gated.
 var SelfRef = domain.Ref(domain.CoreNamespace, "top-controller")
 
 // LeaseName is the reconcile run's serialization-lease name (one reconcile
@@ -167,6 +170,12 @@ type RunResult struct {
 	PruneRefusals []PruneRefusal
 	// DiffReport assembles the per-service diff with spec sources.
 	DiffReport DiffReport
+	// SelfAdopted reports whether THIS run saw the controller-self app's
+	// ownership row in state managed — the ADR-0005 bootstrap handoff
+	// recorded (T-402). It is the evidence the adoption-aware self
+	// posture was judged from (report-only pre-handoff, human-gated
+	// image drift, field-only convergence otherwise).
+	SelfAdopted bool
 	// StartedAt/FinishedAt read from the injected Clock.
 	StartedAt  time.Time
 	FinishedAt time.Time
@@ -364,9 +373,17 @@ func (r *Reconciler) Run(ctx context.Context, in RunInput) (RunResult, error) {
 	res.Orphaned = pl.Orphaned
 	res.DiffReport = buildDiffReport(pl, in)
 
+	// T-402: the controller-self special case is adoption-aware. The
+	// ownership ledger decides once per run (adopt.go): with the
+	// bootstrap handoff recorded the adopted self converges field
+	// drift; a revision change and pre-adoption states stay
+	// report-only / human-gated (ADR-0005).
+	selfAdopted, selfAdoptErr := adoptedSelf(ctx, r.store)
+	res.SelfAdopted = selfAdopted
+
 	// --- apply + gate (per service, contained errors) ------------------------------
 	// WithOpID threads the operation id to ledger attribution.
-	r.applyAndGate(WithOpID(ctx, op.ID.String()), in, ordered, pl, &res)
+	r.applyAndGate(WithOpID(ctx, op.ID.String()), in, ordered, pl, selfAdopted, selfAdoptErr, &res)
 	res.Status = runStatus(res.Outcomes)
 	if ctx.Err() != nil {
 		// A cancelled run is failed even when the services that ran were
