@@ -393,8 +393,8 @@ func TestInstallDryRunZeroMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("install dry-run: %v", err)
 	}
-	if len(res.PhasesRun) != 6 {
-		t.Fatalf("dry-run plan phases = %v, want the 6 phase lines", res.PhasesRun)
+	if len(res.PhasesRun) != 7 {
+		t.Fatalf("dry-run plan phases = %v, want the 7 phase lines", res.PhasesRun)
 	}
 	if !res.Preflight.OK() {
 		t.Errorf("dry-run must attach a green preflight report (read-only run of phase 0): %+v", res.Preflight.Findings)
@@ -410,7 +410,7 @@ func TestInstallDryRunZeroMutations(t *testing.T) {
 		t.Fatalf("dry-run wrote ledger rows: %v", rows)
 	}
 	if !slices.ContainsFunc(res.Notes, func(n string) bool {
-		return strings.Contains(n, "adoption-record-only")
+		return strings.Contains(n, "adoption note")
 	}) {
 		t.Fatalf("dry-run plan must carry the adoption-record note: %v", res.Notes)
 	}

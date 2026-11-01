@@ -22,7 +22,11 @@
 //	Phase 4  bootstrap deploy — storage entry + app + pinned-image deploy,
 //	                          bounded health wait; every created asset is a
 //	                          bootstrap-owned ledger row.
-//	Phase 5  report         — created/adopted/left-alone/checked lists and
+//	Phase 5  first reconcile — ONE reconciler pass (the FirstRunner seam)
+//	                          plus the ADR-0005 ownership handoff: the
+//	                          controller app's ledger row converts
+//	                          bootstrap-owned → managed; never a redeploy.
+//	Phase 6  report         — created/adopted/left-alone/checked lists and
 //	                          the next suggested commands.
 //
 // Phase state lives in the store's operations records (kind "install",
@@ -35,13 +39,10 @@
 // internal/domain, internal/store (interface only — sqlite.Open is the
 // one wiring point, mirroring internal/recover). It does NOT import
 // internal/backend/dokku or internal/cli: the CLI (composition root) wires
-// the concrete backend via Options.Backend and renders results.
-//
-// The first-reconciliation handoff (contract phase 5's adopt-and-reconcile,
-// "Readiness(core)" gate) is Milestone 3/4 work: this package records the
-// bootstrap deployment and stops; the deployment stays bootstrap-owned
-// until the controller adopts itself (store.MarkManaged), which this
-// package deliberately does NOT do (adoption RECORD only per the M2 scope).
+// the concrete backend via Options.Backend and renders results. The same
+// holds for the first reconciliation: Options.FirstRun carries the
+// gitsource+spec+reconcile composition the CLI builds (adoption stays
+// runner/backend-free HERE — no layering shortcut, adopt.go).
 package install
 
 import (
@@ -122,6 +123,11 @@ var (
 	// ErrLeaseHeld: the serialization lease is held (controller running);
 	// uninstall stops rather than racing it.
 	ErrLeaseHeld = errors.New("uninstall: controller lease is held")
+	// ErrAdoptionRefused: the ADR-0009 adoption precondition failed —
+	// the ledger row's state is not one the handoff may convert
+	// (e.g. pre-existing). The deployment stays bootstrap-owned/unknown;
+	// nothing was touched.
+	ErrAdoptionRefused = errors.New("install: adoption precondition failed")
 )
 
 // Options parameterize Install. Zero values select production seams; every
@@ -217,6 +223,14 @@ type Options struct {
 	HealthTimeout time.Duration
 	// PollInterval spaces the health-wait Inspect polls (0 → 2 s).
 	PollInterval time.Duration
+
+	// FirstRun is the phase-5 reconciliation handoff (T-402; install
+	// adopt.go documents the seam). nil keeps the old posture: phase 5
+	// records the skip as an info finding (adopted=false) and the
+	// bootstrap deployment stays bootstrap-owned — the next wired
+	// install adopts. The composition root (internal/cli) composes
+	// gitsource + spec + reconcile.Reconciler behind it.
+	FirstRun FirstRunner
 }
 
 // ImageRef renders the pinned controller image reference.

@@ -19,7 +19,7 @@ import (
 	"github.com/toledompm/top/internal/store/sqlite"
 )
 
-// The phased runner: docs/contracts/installer.md phases 0-5 with resume.
+// The phased runner: docs/contracts/installer.md phases 0-6 with resume.
 //
 // Resume discipline — every phase records ONE store operation (kind
 // "install", details JSON {"phase": N, ...}); the NEWEST op per phase
@@ -50,7 +50,8 @@ const (
 	phaseDokkuSetup      = 2
 	phaseWiring          = 3
 	phaseBootstrapDeploy = 4
-	phaseReport          = 5
+	phaseFirstReconcile  = 5
+	phaseReport          = 6
 )
 
 // phaseNames for op details and Result.PhasesRun rendering.
@@ -60,7 +61,8 @@ var phaseNames = map[int]string{
 	phaseDokkuSetup:      "2-dokku-setup",
 	phaseWiring:          "3-platform-wiring",
 	phaseBootstrapDeploy: "4-bootstrap-deploy",
-	phaseReport:          "5-report",
+	phaseFirstReconcile:  "5-first-reconcile",
+	phaseReport:          "6-report",
 }
 
 // maxDetailsSnapshotBytes caps the inventory snapshot embedded in an
@@ -128,7 +130,7 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 		res.PhasesRun = dryRunPlan(opts)
 		res.Notes = append(res.Notes,
 			"dry-run: nothing was written; cross-check the plan, then re-run with --confirm",
-			"adoption-record-only: first reconciliation (contract phase 5) is M3/M4; the bootstrap deployment stays bootstrap-owned until the controller adopts itself")
+			"adoption note: phase 5 (first reconciliation + ADR-0005 ownership handoff) lists as planned but writes nothing in a dry-run — the bootstrap deployment stays bootstrap-owned until the real run completes it")
 		return res, nil
 	}
 
@@ -204,7 +206,22 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 		}
 	}
 
-	// Phase 5 — report always runs (even after a failure: the Result
+	// Phase 5 — first reconciliation + ADR-0005 ownership handoff
+	// (T-402, internal/install/adopt.go). Resume-aware like phases 1..4;
+	// the completion key is the adoption record, not the op state alone
+	// (scanPhases): a phase that found no controller spec succeeded with
+	// "adopted": false and redoes on the next install.
+	if failure == nil && done[phaseFirstReconcile] {
+		skip(phaseFirstReconcile)
+	} else if failure == nil {
+		if err := runPhase(ctx, st, opts, phaseFirstReconcile, res, func(opID string, res *Result, extra phaseExtras) error {
+			return runFirstReconcile(ctx, opts, st, opID, res, extra)
+		}); err != nil {
+			failure = err
+		}
+	}
+
+	// Phase 6 — report always runs (even after a failure: the Result
 	// carries the partial lists; this op marks the invocation itself).
 	repErr := runPhase(ctx, st, opts, phaseReport, res, func(opID string, res *Result, extra phaseExtras) error {
 		return nil // the report content IS the Result
@@ -217,8 +234,6 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 		"topctl status",
 		"topctl doctor",
 	}
-	res.Notes = append(res.Notes,
-		"adoption-record-only: first reconciliation (contract phase 5) is M3/M4; the bootstrap deployment stays bootstrap-owned until the controller adopts itself")
 	res.Resumed = len(res.PhasesSkipped) > 0
 	return res, nil
 }
@@ -244,7 +259,8 @@ func dryRunPlan(opts Options) []string {
 		"2-dokku-setup: " + dokkuSetupPlan(opts),
 		"3-platform-wiring: dirs " + dirsPlan(opts.DataDir) + "; network " + InternalNetwork + "; deploy key: " + deployKeyPlan(opts) + repoInitPlan(opts),
 		"4-bootstrap-deploy: storage entry " + StorageEntryName + " → app " + opts.ControllerAppName() + " ← " + opts.ImageRef() + "; bounded health wait",
-		"5-report: created/adopted/left-alone/checked + next commands",
+		"5-first-reconcile: one reconciler pass over the seeded repo specs + the ADR-0005 ownership handoff (core-top-controller bootstrap-owned → managed) — no redeploy (dry-run and no handoff wired: adoption is planned only)",
+		"6-report: created/adopted/left-alone/checked + next commands",
 	}
 }
 
@@ -394,6 +410,15 @@ func abortStaleInstallOps(ctx context.Context, st store.Store, now time.Time) er
 
 // scanPhases fills `done` from the store: the newest op per phase decides
 // (ListOperations returns newest-first; the first op seen per phase wins).
+//
+// Phase 5's completion is keyed on the adoption record, not the op state
+// alone: an install that could not adopt (no controller spec yet in the
+// repo, or nothing to adopt) records SUCCESS with details "adopted":
+// false — and its re-run REDOES the phase, so a controller spec pushed
+// later still gets adopted. A phase that adopted (details "adopted":
+// true, or a skip reason recorded as already-managed) is permanently
+// done: re-running after a successful adoption re-adopts nothing (the
+// T-402 op-record guard).
 func scanPhases(ctx context.Context, st store.Store, done map[int]bool) error {
 	ops, err := st.ListOperations(ctx, 100, &store.OperationFilter{Kind: domain.OpInstall})
 	if err != nil {
@@ -402,6 +427,10 @@ func scanPhases(ctx context.Context, st store.Store, done map[int]bool) error {
 	for _, op := range ops {
 		p, ok := phaseOf(op)
 		if !ok || done[p] {
+			continue
+		}
+		if p == phaseFirstReconcile && op.State == domain.OpSucceeded {
+			done[p] = op.Details["adopted"] == true
 			continue
 		}
 		done[p] = op.State == domain.OpSucceeded
