@@ -87,9 +87,12 @@ the judged posture:
   report; converged → `noop`. No apply path fires.
 - **row `managed`, revision/image drift**: outcome
   `skipped`/`self-drift-reported` pointing at the human gate —
-  `topctl deploy core/top-controller` (T-406). The reconciler NEVER
-  applies a new image to its own process (a wedging self-deploy would
-  kill every future reconciliation, including the fix).
+  `topctl deploy core/top-controller` (T-406). The reconciler itself
+  NEVER applies a new image to its own process (a wedging self-deploy
+  would kill every future reconciliation, including the fix); the T-406
+  exception is `RunInput.SelfDeployApproved`, set only by that confirmed
+  human CLI deploy (actor `user` — any other actor carrying the flag
+  fails validation). Guard tests: `adopt_selfgate_test.go`.
 - **row `managed`, field-only drift** (env/ports/domains/storage/
   restart/networks): the adopted self converges like any other service —
   `EnsureApp` is adopt-if-exists and none of those verbs carries an

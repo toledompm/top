@@ -130,6 +130,16 @@ exists (reads never invent a store; absent state = honest empty), and
   (or `--revision`-pinned) platform revision through the same run; not
   confirm-gated (it converges toward git, per ADR-0002 — the destructive
   boundary stays the prune consent pair). `--dry-run` identical shape.
+  T-406 exception: `core/top-controller` (the controller-self app) IS
+  confirm-gated (ADR-0005 human gate) — the run carries
+  `RunInput.SelfDeployApproved`, the reconciler's only license to apply a
+  revision change to its own deployment; the command echoes the
+  old-release preservation fact + `topctl recover redeploy` rollback
+  path. Non-TTY without `--confirm` → exit 2.
+  Install also wires `Options.FirstRun` (firstrun.go): phase 5's
+  reconciliation handoff — gitsource over the positional repo → strict
+  spec load → adopt-aware reconcile run — mirroring internal/install's
+  reconHandoff reference.
 - **history** — the append-only operation ledger (newest first);
   `historyRows` matches the optional ref against the redacted failure
   evidence recorded per row; failed rows render the T-308 hint
