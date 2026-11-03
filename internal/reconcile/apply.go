@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -299,6 +300,16 @@ func (r *Reconciler) applyChanges(ctx context.Context, in RunInput, svc domain.S
 			if hostDir == "" {
 				return need, errors.New(
 					"apply: storage change but no VolumeRoot configured; refusing to mount un-owned host dirs (ADR-0009)")
+			}
+			// The reconciler owns <VolumeRoot>/<app>-<entry> (ADR-0009's
+			// TOP-owned host dir, 0700): dokku 0.38's storage:create
+			// refuses a MISSING host dir outright ("unable to stat …",
+			// tier-4 verified 2026-11-03), so the dir is this apply's own
+			// precondition. MkdirAll is idempotent and converged-host
+			// cheap; the installer's wiring only provisioned
+			// {secrets,git,backups} — /volumes is lifecycle-owned here.
+			if err := os.MkdirAll(hostDir, 0o700); err != nil {
+				return need, fmt.Errorf("ensure storage host dir %s: %w", hostDir, err)
 			}
 			app, _ := domain.AppName(svc.Ref.Namespace, svc.Ref.Name)
 			if err := r.backend.EnsureStorageEntry(ctx, app+"-"+name, hostDir); err != nil {
