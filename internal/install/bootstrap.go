@@ -362,8 +362,22 @@ func runBootstrapDeploy(ctx context.Context, opts Options, st store.Store, opID 
 	// the ledger distinguishes: adopt happens only on the resume path
 	// where phase 4 already recorded the app (or phase 0 would have
 	// failed on a foreign app).
-	if err := opts.Backend.EnsureApp(ctx, ref); err != nil {
-		return fmt.Errorf("ensure app %s: %w", app, err)
+	//
+	// The create is retried on dokku's verified first-boot poison window
+	// (tier-3 e2etest, 2026-10-28): right after the host's dokku daemon
+	// boots, `apps:create` can transiently exit 1 with "! No web
+	// listeners specified" and the flake is sticky for a failed-create
+	// window. Nothing else is retried: every other failure surfaces.
+	ensureDeadline := time.Now().Add(60 * time.Second)
+	for {
+		ensureErr := opts.Backend.EnsureApp(ctx, ref)
+		if ensureErr == nil {
+			break
+		}
+		if !strings.Contains(ensureErr.Error(), "No web listeners specified") || time.Now().After(ensureDeadline) {
+			return fmt.Errorf("ensure app %s: %w", app, ensureErr)
+		}
+		time.Sleep(2 * time.Second)
 	}
 	rowMarked, rerr := st.ListLedger(ctx, inventory.KindApp)
 	if rerr != nil {
