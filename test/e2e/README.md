@@ -66,7 +66,13 @@ the controller's `controller.pollIntervalSeconds`), `TOP_E2E_WEBHOOK_URL`
   `docker inspect` for container/image identity).
 - **The spec change** is a probe env item injected under the target
   service's `env:` mapping (`lib.sh`'s `inject_env_probe`) — additive,
-  rollback-free, and visible in every evidence surface above.
+  rollback-free, and visible in every evidence surface above. Use a FRESH
+  probe key per scenario (e.g. `TOP_E2E_PROBE_KEY=E2E_PROBE_T404` then a
+  distinct `..._T404_S2`): env convergence is KEY-SET based by design
+  (the adapter never reads config values, ADR-0008), so a second
+  VALUE-change on the same key would never converge and the
+  `config:get` value assertions would hang (tier-4 verified
+  2026-11-03).
 
 ## Helper tests (tier 1)
 
