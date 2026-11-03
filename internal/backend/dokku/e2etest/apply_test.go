@@ -455,6 +455,78 @@ func bootGitDaemon(t *testing.T, env *e2eEnv) (string, string, error) {
 	return url, sha, nil
 }
 
+// TestE2EApplyMutableTagForce: the M3 AC #6 remainder at tier 3 — a
+// mutable-tag (non-digest) source is NEVER skipped on image equality
+// alone, and the poll-level move detection (ForcePull from the caller)
+// lands the `git:from-image --force` redeploy on a REAL Dokku. Two moves
+// in one app: (1) same tag, no force ⇒ the equality guard skips (no
+// git:from-image at all); (2) same tag WITH ApplyOptions.ForcePull ⇒
+// exactly one `git:from-image --force <app> <image>` and the old release
+// stays serving through it (the move target here is registry-identical
+// content — the real remote sha change is exercised at tier 4, but the
+// adapter contract the AC names is exactly this argv + readiness pair).
+func TestE2EApplyMutableTagForce(t *testing.T) {
+	env := skipGated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 12*time.Minute)
+	defer cancel()
+
+	rr := &recordingRunner{inner: env.runner}
+	c := applyClient(rr)
+	name := domain.Name("e2etagm")
+	ref := domain.Ref(nsApply, name)
+	if err := ensureRetried(ctx, env, ref); err != nil {
+		debugLogs(t, env.runner)
+		t.Fatalf("pre-EnsureApp: %v", err)
+	}
+
+	spec := fullRangeSpec(name, imageDeployed)
+	spec.Storage = nil
+	spec.Resources = domain.Resources{}
+	if err := applyRetried(ctx, t, env, c, ref, spec); err != nil {
+		debugLogs(t, env.runner)
+		t.Fatalf("initial apply: %v", err)
+	}
+	if n := rr.count("git:from-image"); n != 1 {
+		t.Fatalf("initial apply git:from-image x%d: %v", n, rr.argv())
+	}
+	if n := rr.count("git:from-image --force"); n != 0 {
+		t.Fatalf("initial apply must never force: %v", rr.argv())
+	}
+
+	// Move 1: the poll calls Apply again over the SAME mutable tag with
+	// no ForcePull (e.g. the spec fingerprint changed elsewhere but the
+	// tag did not move): image equality + running ⇒ skip, no redeploy.
+	rr.calls = nil
+	if err := c.Apply(ctx, ref, spec, nil, backend.ApplyOptions{}); err != nil {
+		t.Fatalf("same-tag no-force apply: %v", err)
+	}
+	if n := rr.count("git:from-image"); n != 0 {
+		t.Fatalf("mutable tag without force must skip on equality: %v", rr.argv())
+	}
+
+	// Move 2: the poll DETECTED a remote tag move (ForcePull set): the
+	// adapter must run `git:from-image --force` even though the observed
+	// image ref is unchanged, and level the old release out cleanly.
+	rr.calls = nil
+	if err := c.Apply(ctx, ref, spec, nil, backend.ApplyOptions{ForcePull: true}); err != nil {
+		t.Fatalf("force apply: %v", err)
+	}
+	if n := rr.count("git:from-image --force"); n != 1 {
+		t.Fatalf("want exactly one git:from-image --force:\n%v", rr.argv())
+	}
+	if n := rr.count("git:from-image top-e2e" + string(name) + " " + imageDeployed); n != 1 {
+		t.Fatalf("forced deploy argv wrong:\n%v", rr.argv())
+	}
+	r, err := c.Readiness(ctx, ref)
+	if err != nil || !r.Deployed || !r.Running || r.Build != domain.BuildSucceeded {
+		debugLogs(t, env.runner)
+		t.Fatalf("readiness after force-move: %+v err %v", r, err)
+	}
+	if obs, err := c.Inspect(ctx, ref); err != nil || obs.Image != imageDeployed {
+		t.Fatalf("image after force-move: %+v err %v", obs, err)
+	}
+}
+
 func errText(err error) string { return fmt.Sprint(err) }
 
 // demuxFrame decodes the standard docker exec multiplexed stream (one

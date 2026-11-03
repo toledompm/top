@@ -475,7 +475,46 @@ func (c *Client) deploy(ctx context.Context, app string, spec domain.Service, ob
 		args = append(args, "--force")
 	}
 	args = append(args, app, imageRef)
-	_, derr := c.run(ctx, "deploy image", app, deployTimeout, args...)
+	// runFull (stderr visible on failure): the no-change classification
+	// below keys on dokku's stderr text, which c.run swallows for failed
+	// calls.
+	rctx, cancel := context.WithTimeout(ctx, deployTimeout)
+	defer cancel()
+	var stdout, stderr []byte
+	var derr error
+	if c.Runner == nil {
+		return wrapBackend("deploy image", app, exec.ErrNotFound)
+	}
+	stdout, stderr, derr = c.Runner.Run(rctx, c.Binary, args...)
+	if derr == nil {
+		return nil
+	}
+	// Classify dokku's no-change guard (real dokku 0.38.32, tier-3
+	// verified 2026-11-03): `git:from-image` — with or without --force —
+	// exits 1 with "! No changes detected, skipping git commit / Call
+	// 'ps:rebuild'" when the app's stored source already matches the
+	// image. A FORCE deploy over a SERVING release whose stored source
+	// matches (simulated move: same registry content) is success-with-
+	// noise — the release keeps serving, nothing is redeployed, and
+	// dokku records no build at all (the "skipping git commit" branch).
+	// When the release is NOT serving, dokku's own advice heals it:
+	// ps:rebuild re-deploys the stored source. A genuine remote tag move
+	// changes the pulled image, so the stored source differs and no
+	// commit is skipped — the exit-1 path can only mean "no move".
+	combined := string(bytes.TrimSpace(stderr)) + "\n" + string(bytes.TrimSpace(stdout))
+	if exec.IsExitCode(derr, 1) && strings.Contains(combined, "No changes detected") {
+		if obs.Running {
+			if c.Log != nil {
+				c.Log.DebugContext(ctx, "no-change force deploy on serving release treated as no-move",
+					"op", "deploy image", "app", app, "image", imageRef)
+			}
+			return nil
+		}
+		if _, rerr := c.run(ctx, "deploy image rebuild", app, deployTimeout, "ps:rebuild", app); rerr != nil {
+			return wrapMaybe(rerr, "deploy image rebuild", app)
+		}
+		return nil
+	}
 	return wrapMaybe(derr, "deploy image", app)
 }
 

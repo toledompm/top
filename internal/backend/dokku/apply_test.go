@@ -210,6 +210,43 @@ func TestApplyMutableTagForcePull(t *testing.T) {
 	wantArgvCount(t, f, "git:from-image --force top-web docker.example.com/example/whoami:1.0", 1)
 }
 
+// Force deploy whose pull brings no content change: real dokku 0.38.32
+// exits 1 with "No changes detected" (tier-3 verified 2026-11-03, M3 AC #6
+// remnant) — over a SERVING release that is success-with-noise (no deploy;
+// dokku records no build), and dokku's own `ps:rebuild` advice heals a
+// NOT-serving release.
+func TestApplyMutableTagForceNoChangeServing(t *testing.T) {
+	f := exectest.NewFakeRunner()
+	spec := desiredBase(tvsMutable)
+	spec.Env = map[string]string{"TZ": "UTC", "HTTP_FOO": "x"}
+	seedConvergedApply(f,
+		func(f *exectest.FakeRunner) {
+			f.SetOutput("dokku", fail(1, "!     No changes detected, skipping git commit\n !     Call 'ps:rebuild' on app to rebuild the app from existing source"), "git:from-image", "--force", "top-web", "docker.example.com/example/whoami:1.0")
+		})
+	if err := newC(f).Apply(run(t), tvsRef, spec, nil, backend.ApplyOptions{ForcePull: true}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	wantArgvCount(t, f, "git:from-image --force top-web docker.example.com/example/whoami:1.0", 1)
+	wantArgvCount(t, f, "ps:rebuild", 0) // serving ⇒ no deploy record to heal
+}
+
+func TestApplyMutableTagForceNoChangeNotServingRebuilds(t *testing.T) {
+	f := exectest.NewFakeRunner()
+	spec := desiredBase(tvsMutable)
+	spec.Env = map[string]string{"TZ": "UTC", "HTTP_FOO": "x"}
+	seedConvergedApply(f,
+		func(f *exectest.FakeRunner) {
+			f.SetOutput("dokku", ok(`{"app":"top-web","deployed":"true","running":"false","processes":"0"}`), "ps:report", "top-web", "--format", "json")
+		},
+		func(f *exectest.FakeRunner) {
+			f.SetOutput("dokku", fail(1, "!     No changes detected, skipping git commit\n !     Call 'ps:rebuild' on app to rebuild the app from existing source"), "git:from-image", "--force", "top-web", "docker.example.com/example/whoami:1.0")
+		})
+	if err := newC(f).Apply(run(t), tvsRef, spec, nil, backend.ApplyOptions{ForcePull: true}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	wantArgvCount(t, f, "ps:rebuild top-web", 1)
+}
+
 func TestApplyDigestNeverForced(t *testing.T) {
 	f := exectest.NewFakeRunner()
 	spec := desiredBase(tvsDigest)
