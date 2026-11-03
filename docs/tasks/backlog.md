@@ -169,25 +169,41 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
   controller, prometheus, grafana, exporters; provisioned dashboards;
   small-host defaults. Deps: T-307. AC: specs validate in CI; README explains
   every field. Tests: CI validation. Refs: ADR-0004/0010. Agent: docs+core-go.
+  **Status: DONE 2026-11-03** (`ecd5392`, `7c346bd`) — tier-1 validation
+  green (`platformrepo_validate_test.go`); 4 tier-1 packages delivered.
 - **T-402 Adopt-bootstrap reconciliation.** First-run adoption of
   `bootstrap-owned` controller; ledger conversion. Deps: T-207, T-304. AC:
   install → first reconcile converts ownership without redeploy. Tests:
-  tier 3/4. Refs: ADR-0005. Agent: core-go.
+  tier 3/4. Refs: ADR-0005. Agent: core-go. **Status: DONE at tiers 1–2
+  2026-11-03** (`fba65c4`, `82c7e30`, `145aa40`); clean-VM proof pending
+  the soak run (see docs/milestones/m4-review.md §5).
 - **T-403 Observability wiring.** top-internal attachments, scrape config
   rendering, grafana provisioning + secretRef admin. Deps: T-401, T-305.
   AC: prometheus scrapes controller + exporters; dashboard shows reconcile
-  metrics. Tests: tier 4 script. Agent: core-go.
+  metrics. Tests: tier 4 script. Agent: core-go. **Status: DONE at tier 1
+  2026-11-03** (`3ffd717`, `8d602b6`); live scrape proof pending soak.
+  Deviations/proposals recorded in m4-review.md §3 (spec.args, storage
+  readOnly, copy-sync, dash-kebab).
 - **T-404 E2E: change→webhook→converged; missed→poll.** Acceptance 3+4
   scripted on VM. Deps: T-303, T-402. Tests: tier 4. Agent: test.
+  **Status: SCRIPTED 2026-11-03** (`6d487a3`, `test/e2e/t404-webhook-poll.sh`
+  + hermetic `lib.sh`/`lib_test.go`); not yet live-run.
 - **T-405 E2E: TOP-down survival.** Acceptance 8: kill/stop controller,
   assert workloads+monitoring persist, revive via recover. Deps: T-402.
-  Tests: tier 4. Agent: test.
+  Tests: tier 4. Agent: test. **Status: SCRIPTED 2026-11-03**
+  (`39f104b`, `test/e2e/t405-survival.sh`); not yet live-run.
 - **T-406 Self-deploy gated path.** Drift report + `topctl deploy
   core/top-controller` flow with failure preservation. Deps: T-304, T-402.
   AC: acceptance in M4 file. Tests: tier 4. Refs: ADR-0005. Risk: high by
-  design → gated. Agent: core-go.
+  design → gated. Agent: core-go. **Status: DONE at tiers 1–2 2026-11-03**
+  (`59633a6`, `3c3b23d`, `6f2b972`); cli.md contract amendment pending
+  owner blessing (m4-review.md §4 R4). `topctl status` itself remains a
+  stub — flagged as open item.
 - **T-407 M4 review + clean-VM repeat run.** Deps: all M4. Approval: owner.
-  Agent: review.
+  Agent: review. **Status: IN PROGRESS 2026-11-03** — review packet
+  drafted (docs/milestones/m4-review.md); remaining: live e2e + soak run
+  reports (concurrent session), then the clean-VM double run, then owner
+  sign-off on decisions R1–R4 + the carried laws-CI decision.
 
 ## Milestone 5 — Backups, recovery, hardening
 
