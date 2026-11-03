@@ -28,10 +28,12 @@ import (
 	"fmt"
 
 	"github.com/toledompm/top/internal/backend/dokku"
+	"github.com/toledompm/top/internal/config"
 	"github.com/toledompm/top/internal/domain"
 	"github.com/toledompm/top/internal/gitsource"
 	"github.com/toledompm/top/internal/install"
 	"github.com/toledompm/top/internal/reconcile"
+	"github.com/toledompm/top/internal/secrets"
 	"github.com/toledompm/top/internal/spec"
 	"github.com/toledompm/top/internal/store"
 	"github.com/toledompm/top/internal/store/sqlite"
@@ -47,6 +49,9 @@ type installFirstRun struct {
 	// st, when set (tests), is used instead of a fresh sqlite.Open.
 	st  store.Store
 	nss []string
+	// secrets is the host-file provider when the caller's config uses it
+	// (ADR-0008's v0); nil for other kinds (contained failure at apply).
+	secrets reconcile.SecretResolver
 }
 
 // FirstRun implements install.FirstRunner. It reports ControllerSpec and
@@ -82,7 +87,18 @@ func (h installFirstRun) FirstRun(ctx context.Context) (install.FirstRunReport, 
 			selfSpec = true
 		}
 	}
-	rec, err := reconcile.New(reconcile.Options{Backend: h.be, Store: st})
+	rec, err := reconcile.New(reconcile.Options{
+		Backend: h.be,
+		Store:   st,
+		// Secrets: the host-file provider (ADR-0008's v0) — WITHOUT this
+		// the first reconcile violently fails at the first secretRef
+		// service("no secret provider configured"; tier-4 verified
+		// 2026-11-03 on the seeded platform repo's grafana). The kind is
+		// keyed from the caller's own config: other kinds fail contained
+		// with the same ADR-0008 posture (no secret resolution without an
+		// explicit provider).
+		Secrets: h.secrets,
+	})
 	if err != nil {
 		return install.FirstRunReport{}, err
 	}
@@ -115,10 +131,15 @@ func (h installFirstRun) FirstRun(ctx context.Context) (install.FirstRunReport, 
 func (c *cctx) wireFirstRun(repoURL string) install.FirstRunner {
 	src := c.orGitSource()
 	src.URL = repoURL
+	var secretProvider reconcile.SecretResolver
+	if c.cfg.SecretsProvider.Kind == config.SecretsProviderHostfile {
+		secretProvider = secrets.NewHostFile(c.cfg.SecretsDir())
+	}
 	return installFirstRun{
-		src:    src,
-		be:     dokku.New(c.orRunner()),
-		stPath: c.cfg.DataDir + "/top.db",
-		nss:    c.cfg.Namespaces.Order,
+		src:     src,
+		be:      dokku.New(c.orRunner()),
+		stPath:  c.cfg.DataDir + "/top.db",
+		nss:     c.cfg.Namespaces.Order,
+		secrets: secretProvider,
 	}
 }
