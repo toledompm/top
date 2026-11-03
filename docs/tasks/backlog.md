@@ -295,3 +295,22 @@ M3–M5 review doc, never open at merge time.
   §5. Risk: none. Approval: none (non-destructive; deletions revert via
   git). Agent: review + core-go.
 
+
+## Fleet carry-overs (tier-4 e2e run, 2026-11-03)
+
+- **F-1126 Poll→ForcePull for mutable-tag moves is not wired.** The M3 AC
+  #6 adapter part is tier-3 proven (`TestE2EApplyMutableTagForce` in
+  internal/backend/dokku/e2etest), but no caller ever sets
+  `backend.ApplyOptions{ForcePull: true}` in production — the reconciler's
+  image-source apply needs a poll-level "tag moved" signal (digest delta
+  probe) before the acceptance closes. Tests: tier 3/4. Refs:
+  docs/milestones/m3-gitops-controller.md AC 6. Agent: core-go.
+- **F-1127 Secret checksums must reach Compute.** The plan's
+  changeSecretRefs "unresolvable ⇒ re-set" branch never converges because
+  ObservedState.SecretChecksums is never populated (apply-time store
+  record + inspect read; README gap named in plan.go). Until then
+  `topctl diff` never reads clean on secretRef specs. Tests: tier 1/4.
+  Refs: T-403. Agent: core-go.
+- **F-1128 Install should wire the controller's TOP_GIT_URL.** Nothing in
+  the install path sets the bootstrap app's git env (operator config:set
+  needed today). Tests: tier 4. Refs: T-402. Agent: core-go.
