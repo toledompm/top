@@ -119,22 +119,31 @@ if history_has succeeded controller "$SHA_DOWN" || history_has succeeded webhook
 fi
 pass "down-probe NOT converged while controller down"
 
-## revival 1: `always` restart policy.
+## revival 1 (may be no-op) + revival 2: docker's `always` restart policy
+## only auto-revives UNEXPECTED deaths / daemon restarts (docker docs:
+## "if it is manually stopped, restart it only when Docker daemon restarts
+## or the container is manually restarted" — a `docker kill` is the manual
+## shape, tier-4 verified 2026-11-03). M4 acceptance 8 allows either path
+## ("returns via Dokku restart policy / recover restart"): give the policy
+## a bounded window, then issue `topctl recover restart` — the
+## controllerless repair path — as the revival mechanism.
 
-DEADLINE=$(($(date +%s) + 120))
+POLICY_DEADLINE=$(($(date +%s) + 45))
+REVIVED_VIA=policy
 until [ -n "$(docker_running_name "$CONTROLLER_APP.web.")" ]; do
-    [ "$(date +%s)" -ge "$DEADLINE" ] && die "controller never revived via restart policy (120s)"
+    if [ "$(date +%s)" -ge "$POLICY_DEADLINE" ]; then REVIVED_VIA=recover; break; fi
     sleep 3
 done
-REVIVED_CTR=$(docker_running_name "$CONTROLLER_APP.web.")
-pass "controller container revived via restart policy"
+if [ "$REVIVED_VIA" = "policy" ]; then
+    REVIVED_CTR=$(docker_running_name "$CONTROLLER_APP.web.")
+    pass "controller container revived via restart policy"
+fi
 
-# ---------------------------------------------------------------- scenario 2
 ## revival 2: `topctl recover restart` (the controllerless repair path).
 
 "$TOPCTL_BIN" recover restart --confirm >/dev/null \
     || die "topctl recover restart failed"
-pass "recover restart issued"
+pass "recover restart issued ($REVIVED_VIA was the policy result; revival landed via recover)"
 
 DEADLINE=$(($(date +%s) + 120))
 until [ -n "$(docker_running_name "$CONTROLLER_APP.web.")" ]; do
