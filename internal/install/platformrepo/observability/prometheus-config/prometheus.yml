@@ -1,14 +1,18 @@
-# global + rule placeholder config for the Prometheus app
+# global + scrape config for the Prometheus app
 # (spec: observability/prometheus.yaml).
 #
-# HOW THIS FILE SHIPS: it lives in the platform repo and is mounted into the
-# container at /etc/prometheus/prometheus.yml by the reconciler. The mount
-# host-path and the config-file flag are the documented T-403 wiring (see
-# the platform README's "T-403 handoff" section); this file defines only the
-# SHAPE T-403 must fill.
+# HOW THIS FILE SHIPS (T-403, wired): it lives in the platform repo; on
+# every reconcile the controller syncs prometheus-config/ into the
+# TOP-owned storage-entry dir (<VolumeRoot>/<app>-config) and the entry is
+# mounted in the container at /etc/prometheus — the prom/prometheus
+# image's DEFAULT --config.file path, so no --config.file arg is needed.
+# A config edit is live through the bind mount but needs a prometheus
+# reload/restart to load (dokku ps:restart is the operator one-liner).
 #
-# The scrape targets below use the fictional discipline; replace with the
-# real network names for your host.
+# The scrape targets are filled with the Dokku network aliases — on any
+# dokku-attached network, a container for app A of process type web is
+# DNS-resolvable as `<app>.<proc-type>` (dokku network docs; alias is
+# network-independent). The fleet's app names derive from `<ns>-<name>`.
 
 global:
   scrape_interval: 15s # small-host default: 15s, see README
@@ -27,24 +31,26 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # --- T-403 wiring targets (doc placeholders) --------------------------
-  # The exact targets depend on how Dokku exposes container-to-container
-  # networking for this deployment mode; T-403 fills the mechanics and
-  # replaces the TODOs with real hostnames from the running apps.
-  #
+  # --- targets (T-403 wiring: deterministic Dokku network aliases) ------
   # TOP controller (metrics: top_reconcile_total, top_service_drift, ... —
-  # internal/obs metric set).
+  # internal/obs metric set at /metrics on :8080, internal/controller).
   - job_name: top-controller
     static_configs:
-      - targets: ["TODO-T403:8080"] # TODO(T-403): controller container address
+      - targets: ["core-top-controller.web:8080"]
 
   # Host metrics.
   - job_name: node-exporter
     static_configs:
-      - targets: ["TODO-T403:9100"] # TODO(T-403): node-exporter container address
+      - targets: ["observability-node-exporter.web:9100"]
 
   # Per-container metrics (label `name` = Dokku app name, e.g.
   # "core-top-controller" — operator-bounded cardinality).
   - job_name: cadvisor
     static_configs:
-      - targets: ["TODO-T403:8080"] # TODO(T-403): cadvisor container address
+      - targets: ["observability-cadvisor.web:8080"]
+
+  # Grafana's own metrics ("/metrics" at :3000; available unless the
+  # operator disables the endpoint via GF_METRICS_ENABLED=false).
+  - job_name: grafana
+    static_configs:
+      - targets: ["observability-grafana.web:3000"]

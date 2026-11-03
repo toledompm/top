@@ -1,9 +1,11 @@
 # observability/grafana.yaml — dashboards (ADR-0010).
 # Grafana's admin password is the first real consumer of secretRefs
-# (ADR-0008/0010): the secret name `grafana-admin-password` is resolved from
-# the host secret store at apply time (`topctl secrets set`) and injected
-# into the container env as the admin password (never a value in Git; the
-# ref→env-var-name mechanic is part of the documented T-403 follow-up).
+# (ADR-0008/0010). The T-403 secretRef→env rule is: the secret NAME is the
+# dash-kebab form of the env var it feeds — uppercased, dashes as
+# underscores — so `gf-security-admin-password` injects as
+# GF_SECURITY_ADMIN_PASSWORD (rule spelled out in the platform README and
+# enforced by the reconciler's secretEnvKey mapping; ADR-0008's
+# lowercase-only name alphabet is what the dashes exist for).
 #
 # The digest below is FICTIONAL; replace with a real pin before deploying.
 apiVersion: top/v1alpha1
@@ -25,21 +27,23 @@ spec:
     http: { path: /api/health, port: http }
     intervalSeconds: 30
   storage:
-    # Container mount points only — the reconciler binds them to TOP-owned
-    # host paths at /var/lib/top (naming convention internal/install); exact
-    # host path mechanics are the documented T-403 follow-up.
-    - { name: grafana-data, mountPath: /var/lib/grafana, size: 1Gi }
-    # Provisioning tree from this repo (datasources/ + dashboards/):
-    - { name: grafana-provisioning, mountPath: /etc/grafana/provisioning }
-    # Dashboard JSON also visible to the provisioning provider below:
-    - { name: grafana-dashboards, mountPath: /var/lib/grafana/dashboards }
+    # Container mount points only — the reconciler binds each entry to a
+    # TOP-owned host path at <VolumeRoot>/<ns>-<svc>-<entry> (ADR-0009
+    # ownership; T-403 wiring) and the controller syncs the repo's
+    # grafana-provisioning/ tree into the provisioning entry dir before
+    # every apply, so datasources + dashboards are GitOps-managed files.
+    # The ONE provisioning tree covers both Grafana read locations:
+    # /etc/grafana/provisioning/{datasources,dashboards}/ — the dashboard
+    # provider's scan path points at the latter (provider.yaml).
+    - { name: data, mountPath: /var/lib/grafana, size: 1Gi }
+    - { name: provisioning, mountPath: /etc/grafana/provisioning }
   env:
     TZ: UTC
     GF_SECURITY_ADMIN_USER: admin # the username is not a secret
     GF_SERVER_DOMAIN: grafana.example.com # keep in sync with routing.domains
     GF_USERS_ALLOW_SIGN_UP: "false" # one operator, no self-registration
   secretRefs:
-    - grafana-admin-password # ~ GF_SECURITY_ADMIN_PASSWORD (resolved at apply; ADR-0008)
+    - gf-security-admin-password # dash-kebab of GF_SECURITY_ADMIN_PASSWORD; resolved at apply (ADR-0008 + T-403 mapping rule)
   dependsOn:
     - prometheus # intra-namespace ordering hint (ADR-0004): datasource target exists first
   resources:

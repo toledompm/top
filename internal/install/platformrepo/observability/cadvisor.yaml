@@ -25,7 +25,18 @@ spec:
       cpu: 200m
       memory: 128Mi
   restartPolicy: always
-  # NOTE (T-403 wiring, not expressible in v0 spec fields): cAdvisor reads
-  # the host docker socket and cgroups; it needs read-only host-path mounts
-  # (/var/run/docker.sock or the dockersocket proxy, /sys, /var/lib/docker,
-  # /cgroup per host) via Dokku docker-options. See README "T-403 handoff".
+  # NOTE (T-403 status): cAdvisor introspects the host docker daemon and
+  # cgroup tree; the v0 spec and Dokku's storage surfaces cannot express
+  # the READ-ONLY host mounts it needs (/var/run/docker.sock, /sys,
+  # /var/lib/docker — dokku storage:mount has no read-only flag; docker
+  # -v :ro is forbidden to TOP by ADR-0001's docker-CLI-boundary). The
+  # operator-run interim (outside TOP, mirroring the upstream cAdvisor
+  # docker-in-docker rig) is:
+  #   dokku docker-options:add observability-cadvisor deploy
+  #     -v /var/run/docker.sock:/var/run/docker.sock:ro
+  #     -v /sys:/sys:ro -v /var/lib/docker:/var/lib/docker:ro
+  # read-only mounts ride the spec.storage[].readOnly proposal below
+  # (README "T-403 wiring" item 5). WITHOUT the mounts cadvisor reports
+  # only its own container — a lying per-app view — so treat this job as
+  # provisional until the mounts land (the dashboard panels just stay
+  # empty rather than presenting bad data).

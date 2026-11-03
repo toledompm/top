@@ -23,8 +23,14 @@ spec:
       cpu: 100m
       memory: 64Mi
   restartPolicy: always
-  # NOTE (T-403 wiring, not expressible in v0 spec fields): node_exporter
-  # needs host-path mounts (--path.procfs=/host/proc, --path.sysfs=/host/sys,
-  # plus rootfs) and host networking. The mounts go through Dokku
-  # docker-options pointing at TOP-owned read-only host paths; the exact
-  # mechanism is documented in the README "T-403 handoff" section.
+  # NOTE (T-403 status): node_exporter runs with DEFAULT flags and sees
+  # its own container's /proc + /sys until the READ-ONLY host mounts land
+  # — the v0 spec and Dokku's storage surfaces cannot express them
+  # (dokku storage:mount has no read-only flag; docker -v :ro is
+  # forbidden to TOP by ADR-0001's docker-CLI boundary). Operator-run
+  # interim (outside TOP): dokku docker-options:add
+  # observability-node-exporter deploy -v /proc:/host/proc:ro
+  # -v /sys:/host/sys:ro — the --path.procfs/--path.sysfs ARGS still
+  # need the spec.args contract extension (README "T-403 wiring"
+  # items 2+5). Without them the job scrapes but reports container-local
+  # numbers, not the host's — treat as provisional.

@@ -24,6 +24,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/toledompm/top/internal/reconcile"
 	"github.com/toledompm/top/internal/spec"
 )
 
@@ -141,14 +142,18 @@ func TestTemplateFleetIsFullyDigestPinned(t *testing.T) {
 func TestTemplateGrafanaSecretRefNotInline(t *testing.T) {
 	t.Parallel()
 	res := loadTemplateFleet(t)
-	seen := false
 	for _, svc := range res.Services {
 		if string(svc.Ref.Namespace)+"/"+string(svc.Ref.Name) != "observability/grafana" {
 			continue
 		}
-		seen = true
-		if len(svc.SecretRefs) != 1 || svc.SecretRefs[0] != "grafana-admin-password" {
-			t.Errorf("grafana secretRefs = %v, want [grafana-admin-password] (ADR-0008)", svc.SecretRefs)
+		// ADR-0008 + the T-403 dash-kebab rule: the secret NAME is the
+		// dash-kebab form of the env var it feeds (README "T-403 wiring"
+		// item 6); the reconciler's secretEnvKey maps it to
+		// GF_SECURITY_ADMIN_PASSWORD at apply time.
+		if len(svc.SecretRefs) != 1 || svc.SecretRefs[0] != "gf-security-admin-password" {
+			t.Errorf("grafana secretRefs = %v, want [gf-security-admin-password] (README item 6 mapping: GF_SECURITY_ADMIN_PASSWORD's dash-kebab form)", svc.SecretRefs)
+		} else if got, err := reconcile.SecretEnvKey("gf-security-admin-password"); err != nil || got != "GF_SECURITY_ADMIN_PASSWORD" {
+			t.Errorf("grafana secretRef does not map to GF_SECURITY_ADMIN_PASSWORD via reconcile.SecretEnvKey (rule drift between template and reconciler): %q, %v", got, err)
 		}
 		if len(svc.DependsOn) != 1 || svc.DependsOn[0].String() != "observability/prometheus" {
 			t.Errorf("grafana dependsOn = %v, want [observability/prometheus] (intra-namespace, ADR-0004)", svc.DependsOn)
@@ -159,8 +164,87 @@ func TestTemplateGrafanaSecretRefNotInline(t *testing.T) {
 			}
 		}
 	}
-	if !seen {
-		t.Fatalf("observability/grafana not loaded; loaded:%v", loadedNames(res))
+}
+
+// TestTemplateObservabilityWiringIsFilled pins the T-403 wired structures:
+// no TODO-T403 placeholders anywhere in the fleet, the prometheus config
+// entry, the single grafana provisioning entry (T-403 collapsed the old
+// separate dashboards entry into the provisioning tree), and the
+// deterministic Dokku alias targets / datasource URL.
+func TestTemplateObservabilityWiringIsFilled(t *testing.T) {
+	t.Parallel()
+	res := loadTemplateFleet(t)
+	wantEntry := map[string]string{
+		"observability/prometheus": "config|/etc/prometheus",
+		"observability/grafana":    "provisioning|/etc/grafana/provisioning",
+	}
+	for _, svc := range res.Services {
+		key := string(svc.Ref.Namespace) + "/" + string(svc.Ref.Name)
+		want, ok := wantEntry[key]
+		if !ok {
+			continue
+		}
+		parts := strings.SplitN(want, "|", 2)
+		found := false
+		for _, st := range svc.Storage {
+			if st.Name == parts[0] && st.MountPath == parts[1] {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s: missing designed T-403 storage entry {name: %q, mountPath: %q}", key, parts[0], parts[1])
+		}
+	}
+
+	// The templates carry none of the erased TODO placeholders.
+	dir := renderTemplateIntoTemp(t)
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, werr error) error {
+		if werr != nil {
+			return werr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(p, ".yml") && !strings.HasSuffix(p, ".yaml") && !strings.HasSuffix(p, ".json") && !strings.HasSuffix(p, ".md") {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), "TODO-T403") || strings.Contains(string(b), "TODO(T-403)") {
+			t.Errorf("%s: still carries an erased T-403 placeholder", filepath.Base(p))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk rendered template: %v", err)
+	}
+
+	// The rendered prometheus.yml carries the deterministic alias targets.
+	b, err := os.ReadFile(filepath.Join(dir, "observability", "prometheus-config", "prometheus.yml"))
+	if err != nil {
+		t.Fatalf("read rendered prometheus.yml: %v", err)
+	}
+	s := string(b)
+	for _, target := range []string{
+		`core-top-controller.web:8080`,
+		`observability-node-exporter.web:9100`,
+		`observability-cadvisor.web:8080`,
+		`observability-grafana.web:3000`,
+	} {
+		if !strings.Contains(s, target) {
+			t.Errorf("rendered prometheus.yml missing T-403 alias target %q", target)
+		}
+	}
+	// And the datasource URL points at the prometheus alias.
+	ds, err := os.ReadFile(filepath.Join(dir, "observability", "grafana-provisioning", "datasources", "prometheus.yaml"))
+	if err != nil {
+		t.Fatalf("read rendered datasource: %v", err)
+	}
+	if !strings.Contains(string(ds), "url: http://observability-prometheus.web:9090") {
+		t.Errorf("rendered datasource URL must be the prometheus Dokku alias (T-403 item 4)")
 	}
 }
 

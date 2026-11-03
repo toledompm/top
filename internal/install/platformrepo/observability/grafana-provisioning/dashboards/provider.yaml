@@ -1,7 +1,9 @@
 # Grafana dashboard *provider* provisioning: where dashboard JSON files are
-# looked up. The dashboards themselves live next to this file (mounted at
-# /var/lib/grafana/dashboards via the grafana spec's dashboard storage).
-# See the platform README "T-403 handoff" for wiring mechanics.
+# looked up. The dashboards themselves live next to this file
+# (…/grafana-provisioning/dashboards/). The provisioning tree is mounted at
+# /etc/grafana/provisioning, so the provider scans its own tree: one config
+# tree, two Grafana read locations (T-403 wiring — the old separate
+# dashboards storage entry is gone).
 apiVersion: 1
 
 providers:
@@ -13,5 +15,5 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: true # the provider-name yields to local UI edits on a single-operator box
     options:
-      path: /var/lib/grafana/dashboards
+      path: /etc/grafana/provisioning/dashboards
       foldersFromFilesStructure: false

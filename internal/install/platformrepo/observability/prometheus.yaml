@@ -7,10 +7,15 @@
 # a real pin. Replace it with a digest you actually want to run before
 # enabling this service on a host.
 #
-# Retention & config: the small-host retention flags and the scrape config
-# file live in prometheus-config/ (see its header and the README); wiring
-# the config file into the container is the documented T-403 follow-up.
-# See README section "T-403 handoff" for exactly what must be filled.
+# Config delivery (T-403, wired): the scrape config file lives in
+# prometheus-config/ and ships to the container through the `config`
+# storage entry below — the controller syncs that repo tree into the
+# TOP-owned entry dir (<VolumeRoot>/observability-prometheus-config) on
+# every reconcile, and the entry mounts in at /etc/prometheus, which is
+# the image's DEFAULT --config.file path, so no --config.file arg is
+# needed. Retention flags are NOT wired (spec has no args field): see
+# README "T-403 wiring" item 2 for the deviation proposal and the
+# operator interim.
 apiVersion: top/v1alpha1
 kind: Service
 metadata:
@@ -28,7 +33,15 @@ spec:
     http: { path: /-/healthy, port: http }
     intervalSeconds: 30
   storage:
+    # tsdb data (advisory size ≥ the 1GiB retention cap + headroom).
     - { name: data, mountPath: /prometheus, size: 2Gi }
+    # T-403 wiring: the repo's prometheus-config/ tree. The reconciler
+    # syncs it into the TOP-owned entry dir <VolumeRoot>/<app>-config
+    # before each apply; mounted at /etc/prometheus (the image's default
+    # config path — zero container args needed). Files here are live on
+    # the bind mount; a config edit still needs a prometheus reload
+    # (`top logs`… or dokku ps:restart) to take effect.
+    - { name: config, mountPath: /etc/prometheus }
   env:
     TZ: UTC
   resources:
