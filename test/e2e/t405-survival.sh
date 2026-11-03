@@ -78,6 +78,9 @@ inject_env_probe "$WT/repo/$PROBE_FILE" "$PROBE_KEY" '"probe-survival-down"' \
 cd "$WT/repo" || die "cd repo"
 git add "$PROBE_FILE"
 $COMMITTER commit -q -m "t405: down-probe (must NOT converge while controller is down)"
+# publish: the controller resolves the REPO (its mirror), not this
+# checkout — the tier-4 verified missing push (2026-11-03).
+git push -q origin "$GIT_BRANCH" || die "git push failed"
 SHA_DOWN=$(git rev-parse HEAD)
 pass "down-probe pushed (sha $SHA_DOWN)"
 
@@ -170,7 +173,7 @@ pass "git:from-image never re-ran for core-top-controller (fingerprint stable ac
 # — internal/reconcile/adopt.go's adopt-aware posture).
 SINCE=$(date -u -d "@$KILLED_AT" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
 if topctl_json history | jq -e --arg since "$SINCE" \
-    '.operations[] | select(.startedAt > $since and ((.error? // "") | test("bootstrap-owned")))' >/dev/null 2>&1; then
+    '.data.operations[] | select(.startedAt > $since and ((.error? // "") | test("bootstrap-owned")))' >/dev/null 2>&1; then
     die "a bootstrap-owned signal appeared in exercise-window history (adoption re-ran?)"
 fi
 pass "no re-adoption on the record surface (exercise window)"

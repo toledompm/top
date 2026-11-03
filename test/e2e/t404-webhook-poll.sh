@@ -67,6 +67,12 @@ commit_probe() { # commit_probe <quoted-value> <message> — probes the one
     git add "$PROBE_FILE"
     git -c user.name=top-e2e -c user.email=top-e2e@example.invalid \
         commit -q -m "$2" || die "git commit failed"
+    # The controller resolves the REPO (its mirror), not this checkout:
+    # without the push the committed sha is unresolvable and the
+    # convergence assertions would race against a sha that never landed
+    # (tier-4 verified 2026-11-03). The operator protocol carries the
+    # push auth as usual.
+    git push -q origin "$GIT_BRANCH" || die "git push failed (no credentials for $PLATFORM_REPO?)"
     git rev-parse HEAD
 }
 
@@ -154,7 +160,7 @@ pass "poll run recorded: actor=controller revision=$SHA2"
 ## 2c. the poll convergence carries NO webhook evidence.
 
 if topctl_json history | jq -e --arg rev "$SHA2" \
-    '.operations[] | select(.actor == "webhook" and .revision == $rev)' >/dev/null; then
+    '.data.operations[] | select(.actor == "webhook" and .revision == $rev)' >/dev/null; then
     die "webhook evidence exists for $SHA2 — poll assertion violated"
 fi
 pass "sha2 converged with NO webhook evidence on the record"

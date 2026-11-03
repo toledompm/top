@@ -113,6 +113,13 @@ topctl_json() {
     "$TOPCTL_BIN" "$@" -o json 2>/dev/null
 }
 
+# history_json — the operations array (history's versioned envelope wraps
+# the payload under data; internal/cli's emitOk shape, verified against
+# topctl dev -o json).
+history_json() {
+    topctl_json history | jq '.data.operations'
+}
+
 # history_has <state> <actor> <revision> [correlation-id] — predicate:
 # some operation row in topctl history matches the columns (empty
 # correlation-id matches any).
@@ -121,7 +128,7 @@ history_has() {
     topctl_json history | jq -e \
         --arg state "$_hh_state" --arg actor "$_hh_actor" \
         --arg rev "$_hh_rev" --arg corr "$_hh_corr" \
-        '.operations[] | select(.state == $state and .actor == $actor and .revision == $rev) | if $corr == "" then . else select(.correlationId == $corr) end' \
+        '.data.operations[] | select(.state == $state and .actor == $actor and .revision == $rev) | if $corr == "" then . else select(.correlationId == $corr) end' \
         >/dev/null
 }
 
@@ -131,7 +138,7 @@ history_has() {
 history_rows_after() {
     topctl_json history \
         | jq -r --arg since "$(date -u -d "@$1" +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -j -f '%s' "$1" +%Y-%m-%dT%H:%M:%S)" \
-              '[.operations[] | select(.startedAt > $since)] | length'
+              '[.data.operations[] | select(.startedAt > $since)] | length'
 }
 
 # --- platform-repo probe editing (lib_test.go exercises these) -----------------
