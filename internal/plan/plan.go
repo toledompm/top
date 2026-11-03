@@ -311,8 +311,15 @@ func changeSecretRefs(d domain.Service, o domain.ObservedState) []domain.FieldCh
 	sort.Strings(names)
 	for _, ref := range names {
 		path := "secretRefs." + ref
+		// The OBSERVED config carries the mapped env var key (the
+		// T-403 dash-kebab rule the apply runs by: internal/reconcile's
+		// SecretEnvKey — dashes → underscores, uppercased), never the
+		// ref name (tier-4 verified 2026-11-03: grafana's applied
+		// GF_SECURITY_ADMIN_PASSWORD read as an eternal "+secret-rel
+		// (secret ref)" drift row while the plan keyed on the raw ref).
+		envKey := strings.ToUpper(strings.ReplaceAll(ref, "-", "_"))
 		switch {
-		case !envHasKey(o, ref):
+		case !envHasKey(o, envKey):
 			cs = append(cs, secretChange(path, "+"))
 		case o.SecretChecksums[ref] == "":
 			cs = append(cs, secretChange(path, "")) // unresolvable: force re-set
