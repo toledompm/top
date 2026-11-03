@@ -70,7 +70,7 @@ func TestExitCodeContract(t *testing.T) {
 		{"backup-create-confirmed", []string{"backup", "create", "--confirm"}, ExitFailed},
 		// recover's four confirmed rows live in recover_test.go — the
 		// bodies are real (M2), pinned against a FakeRunner there.
-		{"controller-run", []string{"controller", "run"}, ExitFailed},
+		{"controller-run", []string{"controller", "run"}, ExitUnreachable}, // real body (M4): the daemon's backend/store seam composition fails first without state
 
 		// confirm gate: gated command without --confirm, non-TTY → 2
 		{"install-no-confirm", []string{"install", "github.com/example/top"}, ExitUsage},

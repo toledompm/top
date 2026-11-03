@@ -12,6 +12,7 @@ import (
 
 	"github.com/toledompm/top/internal/backend"
 	"github.com/toledompm/top/internal/backend/dokku"
+	"github.com/toledompm/top/internal/config"
 	"github.com/toledompm/top/internal/controller"
 	"github.com/toledompm/top/internal/doctor"
 	"github.com/toledompm/top/internal/domain"
@@ -19,7 +20,9 @@ import (
 	"github.com/toledompm/top/internal/install"
 	"github.com/toledompm/top/internal/reconcile"
 	"github.com/toledompm/top/internal/recover"
+	"github.com/toledompm/top/internal/secrets"
 	"github.com/toledompm/top/internal/spec"
+	"github.com/toledompm/top/internal/store/sqlite"
 )
 
 // strings is used by warnSpecText / readinessHints below. (kept out of the
@@ -951,7 +954,30 @@ func newControllerCmd(c *cctx) *cobra.Command {
 		Short: "Run the reconciliation controller loops and HTTP endpoint",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := controller.Serve(controller.OptionsFromConfig(c.cfg)); err != nil {
+			// Wave-C composition (internal/controller README): load
+			// config → construct the seams → fill → Serve. The durable
+			// store and the reconciler belong to the DAEMON lifetime
+			// (unlike firstrun's per-run handoff); they close on exit.
+			ctx := cmd.Context()
+			st, err := sqlite.Open(ctx, c.cfg.DataDir+"/top.db")
+			if err != nil {
+				return c.storeExit(cmd, err)
+			}
+			defer func() { _ = st.Close() }()
+			rec, err := c.orReconciler(st)
+			if err != nil {
+				return &ExitError{Code: ExitFailed, Err: err}
+			}
+			if c.cfg.SecretsProvider.Kind != config.SecretsProviderHostfile {
+				return c.emitErrCode(cmd, "failed", ExitFailed,
+					fmt.Sprintf("controller: secretsProvider.kind %q is not hostfile (ADR-0008: the webhook-hmac secret file must be provisionable; other kinds are not wired for the daemon yet)", c.cfg.SecretsProvider.Kind))
+			}
+			o := controller.OptionsFromConfig(c.cfg)
+			o.Reconciler = rec
+			o.Store = st
+			o.Source = c.orGitSource()
+			o.Secret = secrets.NewHostFile(c.cfg.SecretsDir())
+			if err := controller.Serve(o); err != nil {
 				// Serve returns only startup/validation failures
 				// (invalid config, missing store component) — a clean
 				// SIGINT/SIGTERM shutdown is Serve's nil contract.

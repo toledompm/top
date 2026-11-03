@@ -13,9 +13,9 @@ import (
 // findings (scripting); 2 usage; 3 operation failed; 4
 // backend/store-unavailable. Code 1 is produced by real commands with
 // findings: `topctl diff` drift and `topctl doctor` failing checks
-// (T-203). Code 4 has no producer yet — it appears when M3 commands
-// carry real backend liveness — but the constants exist now so the
-// contract has one source of truth.
+// (T-203). Code 4's first producer is `controller run`'s daemon
+// composition (store open failure); other M3 commands surface it through
+// recon_test.go's typed rows.
 const (
 	ExitOK          = 0
 	ExitDrift       = 1
