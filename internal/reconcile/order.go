@@ -20,6 +20,16 @@ func validateRun(in RunInput) error {
 	if err := (domain.DesiredState{Revision: in.Revision, Services: in.Specs}).Validate(); err != nil {
 		return err
 	}
+	// The self-deploy approval is the explicit-human gate (T-406):
+	// `topctl deploy core/top-controller` runs as Actor user; poll loops,
+	// webhook runs, and the controller never carry it — an approval from
+	// any other actor is a run-recorded validation failure, not a
+	// silently-ignored flag (the reconciler must be auditable about
+	// which runs may touch their own process).
+	if in.SelfDeployApproved && in.Actor != domain.ActorUser {
+		return fmt.Errorf("%w: self-deploy approval requires actor %q, not %q (the controller updates its own deployment only via the human `topctl deploy core/top-controller` path, ADR-0005)",
+			domain.ErrInvalid, domain.ActorUser, in.Actor)
+	}
 	if err := resolveDependsOn(in); err != nil {
 		return err
 	}

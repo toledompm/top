@@ -132,6 +132,16 @@ type RunInput struct {
 	// Confirm is the `--confirm` side of the destructive pair; it gates
 	// the whole run's destructive actions (today: prune deletions).
 	Confirm bool
+	// SelfDeployApproved is the ADR-0005 human gate for the
+	// controller-self app (T-406): only the explicit-human CLI path —
+	// `topctl deploy core/top-controller`, behind the confirm gate — sets
+	// it. Poll runs, webhook runs, and the controller loops never do.
+	// When true AND this run saw the adopted (managed) self ledger row,
+	// a revision/image change on the controller is APPLIED (the human
+	// takeover of what the reconciler otherwise only reports); every
+	// other run keeps the report-only human-gate posture. Validate
+	// refuses the flag for any actor other than user.
+	SelfDeployApproved bool
 	// Namespaces are the operator-registered namespaces (ownership
 	// naming + prune two-key rule). Empty → config.NamespacePolicyOrder
 	// inside the default prune gate.

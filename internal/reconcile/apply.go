@@ -70,7 +70,7 @@ func (r *Reconciler) applyAndGate(ctx context.Context, in RunInput, ordered []do
 				})
 				continue
 			}
-			if selfNeedsHumanGate(sp) {
+			if selfNeedsHumanGate(sp) && !in.SelfDeployApproved {
 				res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
 					Ref: ref, Result: domain.OutcomeSkipped, Skip: domain.SkipSelfDrift,
 					Changes: renderChanges(sp.Changes),
@@ -78,9 +78,10 @@ func (r *Reconciler) applyAndGate(ctx context.Context, in RunInput, ordered []do
 				})
 				continue
 			}
-			// Adopted, field-only drift: fall through to the normal
-			// per-service path (EnsureApp is adopt-if-exists; the drift
-			// carries no revision entry, so no deploy verb fires).
+			// Adopted, deployed-by-a-human (T-406: SelfDeployApproved) or
+			// field-only drift: fall through to the normal per-service
+			// path (EnsureApp is adopt-if-exists; the approved path may
+			// carry the revision entry — the explicit-human apply).
 		}
 		// A failed dependency skips this service (contract rule).
 		if blockedByFailed(ref, svcByRef, failed) {

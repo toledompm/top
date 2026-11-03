@@ -25,10 +25,13 @@ import (
 //     report-only (outcome skipped / self-drift-reported), exactly as
 //     before T-402;
 //   - row `managed` and the drift carries a revision/image change → the
-//     ADR-0005 human gate: the reconciler NEVER applies a new image to
-//     its own process (a wedging self-deploy would kill every future
-//     reconciliation, including the fix). The drift is reported and the
-//     outcome points at `topctl deploy core/top-controller` (T-406);
+//     ADR-0005 human gate: an unattended run (poll/webhook/loop) NEVER
+//     applies a new image to its own process (a wedging self-deploy
+//     would kill every future reconciliation, including the fix). The
+//     drift is reported and the outcome points at
+//     `topctl deploy core/top-controller` (T-406) — whose run itself
+//     carries SelfDeployApproved and is allowed to apply, and echoes
+//     the old-release preservation + rollback hint on the way out.
 //   - row `managed` and the drift is field-only (env, ports, domains,
 //     storage, restart policy, networks) → self converges like any other
 //     service. EnsureApp is adopt-if-exists, none of these verbs carries
