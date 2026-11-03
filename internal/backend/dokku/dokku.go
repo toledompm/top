@@ -228,7 +228,7 @@ func (c *Client) Inspect(ctx context.Context, ref domain.ServiceRef) (domain.Obs
 	if err != nil {
 		return domain.ObservedState{}, wrapBackend("inspect domains", app, err)
 	}
-	domains := parseDomains([]byte(domJSON))
+	domains := parseDomains([]byte(domJSON), app)
 
 	obs := domain.ObservedState{
 		Ref:           ref,

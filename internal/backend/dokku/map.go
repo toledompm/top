@@ -61,7 +61,7 @@ func parseBuildStatus(s string) domain.BuildStatus {
 // The app's domains ride app-vhosts space-separated; a proxy-disabled or
 // undeployed app reports an empty string. Unknown/absent keys degrade to
 // []string{}.
-func parseDomains(raw []byte) []string {
+func parseDomains(raw []byte, app string) []string {
 	var doc map[string]string
 	if err := json.Unmarshal(bytes.TrimSpace(raw), &doc); err != nil {
 		return nil // malformed report reads as no domains; never stalls a run
@@ -72,5 +72,22 @@ func parseDomains(raw []byte) []string {
 	split := func(s string) []string {
 		return strings.FieldsFunc(s, func(r rune) bool { return r == ' ' || r == ',' })
 	}
-	return split(doc["app-vhosts"])
+	vhosts := split(doc["app-vhosts"])
+	// dokku's own auto-vhost ("<app>.<global-vhost>") exists on every app
+	// regardless of any spec (tier-4 verified 2026-11-03: internal-mode
+	// specs landed perpetual "-domains.<dokku-vhost>" drift rows because
+	// the default counted as TOP-owned state), so it never rides out of
+	// Inspect; the pattern derives from the report's own global-vhosts.
+	global := split(doc["global-vhosts"])
+	if len(global) == 1 && strings.EqualFold(doc["global-enabled"], "true") {
+		auto := strings.Join([]string{app, global[0]}, ".")
+		kept := vhosts[:0]
+		for _, v := range vhosts {
+			if v != auto {
+				kept = append(kept, v)
+			}
+		}
+		vhosts = kept
+	}
+	return vhosts
 }
