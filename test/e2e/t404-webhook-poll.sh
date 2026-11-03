@@ -99,7 +99,7 @@ pass "push 1 landed (sha $SHA1)"
 DIFFJSON=$(topctl_json diff)
 echo "$DIFFJSON" | jq -e \
     --arg app "$GRAFANA_APP" \
-    '.data.services[] | select(.service | contains($app)) | .source | test("observability/grafana.yaml:[0-9]+$")' \
+    'def nsname($a): ($a | split("-") | (.[0] + "/" + (.[1:] | join("-")))); [.data.services[] | select(.service | nsname($app)) | .source | test("observability/grafana.yaml:[0-9]+$")] | length > 0' \
     >/dev/null \
     || die "diff does not surface $GRAFANA_APP with a file:line origin: $DIFFJSON"
 pass "drift row for $GRAFANA_APP carries file:line spec origin"
