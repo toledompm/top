@@ -199,6 +199,7 @@ func seedPhases(f *exectest.FakeRunner) {
 	f.SetPrefix([]string{"dokku", "ports:report"}, respOK(`[]`))
 	f.SetPrefix([]string{"dokku", "storage:list"}, respOK(`[]`))
 	f.SetPrefix([]string{"dokku", "config:keys"}, respOK("TZ\n"))
+	f.SetPrefix([]string{"dokku", "domains:report"}, respOK(`{"app-enabled":"false","app-vhosts":"","global-enabled":"false","global-vhosts":""}`))
 }
 
 // seedTeardown wires the uninstall verbs (destroy/unmount).

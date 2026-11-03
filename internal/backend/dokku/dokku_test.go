@@ -52,6 +52,10 @@ const (
 	resourceUnlimit = `{"app":"top-web","web.limit.cpu":"","web.limit.memory":""}`
 
 	envKeysOut = "TZ\nHTTP_FOO\n"
+	// domainsNoApp: proxy-disabled/undeployed app (tier-4 verified
+	// 2026-11-03; parseDomains reads app-vhosts space-separated).
+	domainsNoApp   = `{"app-enabled":"false","app-vhosts":"","global-enabled":"false","global-vhosts":""}`
+	domainsEnabled = `{"app-enabled":"true","app-vhosts":"grafana.example.com grafana-a.example.com","global-enabled":"true","global-vhosts":"deploy.example.internal"}`
 	// existsYes/existsNo: apps:exists prints prose; only the exit decides.
 	existsYes = "App exists"
 	existsNo  = "App does not exist"
@@ -69,6 +73,7 @@ func seedFull(f *exectest.FakeRunner) {
 	f.SetOutput("dokku", ok(portsOne), "ports:report", "top-web", "--ports-map-json")
 	f.SetOutput("dokku", ok(storageOne), "storage:list", "top-web", "--format", "json")
 	f.SetOutput("dokku", ok(envKeysOut), "config:keys", "top-web")
+	f.SetOutput("dokku", ok(domainsNoApp), "domains:report", "top-web", "--format", "json")
 }
 
 // seedNotDeployed wires the "fresh app, never deployed" set.
@@ -83,6 +88,7 @@ func seedNotDeployed(f *exectest.FakeRunner) {
 	f.SetOutput("dokku", ok(portsNone), "ports:report", "top-web", "--ports-map-json")
 	f.SetOutput("dokku", ok(storageNone), "storage:list", "top-web", "--format", "json")
 	f.SetOutput("dokku", ok(envKeysOut), "config:keys", "top-web")
+	f.SetOutput("dokku", ok(domainsNoApp), "domains:report", "top-web", "--format", "json")
 }
 
 func ok(stdout string) exectest.Response { return exectest.Response{Stdout: []byte(stdout)} }
@@ -197,7 +203,9 @@ func TestInspectDeployedByImage(t *testing.T) {
 		"dokku resource:report top-web --format json",
 		"dokku ports:report top-web --ports-map-json",
 		"dokku storage:list top-web --format json",
-		"dokku config:keys top-web")
+		"dokku config:keys top-web",
+		"dokku domains:report top-web --format json",
+	)
 
 	want := domain.ObservedState{
 		Ref:           testRef,

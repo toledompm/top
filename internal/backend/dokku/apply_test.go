@@ -130,6 +130,7 @@ func TestApplyImageDigestFreshFullSequence(t *testing.T) {
 		"dokku ports:report top-web --ports-map-json",
 		"dokku storage:list top-web --format json",
 		"dokku config:keys top-web",
+		"dokku domains:report top-web --format json",
 		"dokku ps:set top-web restart-policy always", // fresh policy is on-failure:10
 		"dokku git:from-image top-web docker.example.com/example/whoami@sha256:9d18",
 	}
@@ -596,7 +597,7 @@ func TestApplyPortsProxySetClear(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 	wantArgvCount(t, f, "ports:set top-web http:5000:5000", 1)
-	wantArgvCount(t, f, "domains:", 0) // no domains declared ⇒ untouched
+	wantArgvCount(t, f, "domains:set", 0) // no domains declared ⇒ untouched (the inspect read is allowed)
 
 	f2 := exectest.NewFakeRunner()
 	spec.Routing = domain.Routing{Mode: domain.RoutingNone}

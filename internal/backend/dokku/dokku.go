@@ -217,6 +217,18 @@ func (c *Client) Inspect(ctx context.Context, ref domain.ServiceRef) (domain.Obs
 	if err != nil {
 		return domain.ObservedState{}, wrapBackend("inspect env keys", app, err)
 	}
+	// Domains read (tier-4 uncommented 2026-11-03): apply sets proxy
+	// domains (`domains:set`) but Inspect never read them back, so a
+	// green apply was followed by a perpetual "+domains" drift row (the
+	// "after a green run the same diff is empty" invariant broke on real
+	// proxy specs). `domains:report <app> --format json` reports
+	// {"app-enabled","app-vhosts","global-enabled","global-vhosts"}; the
+	// vhost string is space-separated.
+	domJSON, err := c.run(ctx, "inspect domains", app, readTimeout, "domains:report", app, "--format", "json")
+	if err != nil {
+		return domain.ObservedState{}, wrapBackend("inspect domains", app, err)
+	}
+	domains := parseDomains([]byte(domJSON))
 
 	obs := domain.ObservedState{
 		Ref:           ref,
@@ -227,6 +239,7 @@ func (c *Client) Inspect(ctx context.Context, ref domain.ServiceRef) (domain.Obs
 		LastBuild:     parseBuildStatus(reportString(builds, "build-status", "builds-build-status")),
 		EnvKeys:       parseEnvKeys([]byte(envOut)),
 		Networks:      networkLists(network),
+		Domains:       domains,
 		InspectedAt:   time.Now().UTC(),
 	}
 

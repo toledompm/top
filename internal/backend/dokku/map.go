@@ -4,6 +4,8 @@
 package dokku
 
 import (
+	"bytes"
+	"encoding/json"
 	"strings"
 
 	"github.com/toledompm/top/internal/domain"
@@ -48,4 +50,27 @@ func parseBuildStatus(s string) domain.BuildStatus {
 	default:
 		return domain.BuildNone
 	}
+}
+
+// parseDomains decodes `domains:report <app> --format json` (tier-4
+// verified 2026-11-03) into the proxy's domains:
+//
+//	{"app-enabled":"true","app-vhosts":"grafana.example.com other.example.com",
+//	 "global-enabled":"true","global-vhosts":"deploy.example.internal"}
+//
+// The app's domains ride app-vhosts space-separated; a proxy-disabled or
+// undeployed app reports an empty string. Unknown/absent keys degrade to
+// []string{}.
+func parseDomains(raw []byte) []string {
+	var doc map[string]string
+	if err := json.Unmarshal(bytes.TrimSpace(raw), &doc); err != nil {
+		return nil // malformed report reads as no domains; never stalls a run
+	}
+	if strings.EqualFold(doc["app-enabled"], "false") {
+		return nil
+	}
+	split := func(s string) []string {
+		return strings.FieldsFunc(s, func(r rune) bool { return r == ' ' || r == ',' })
+	}
+	return split(doc["app-vhosts"])
 }
