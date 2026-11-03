@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -100,9 +101,24 @@ func (c *cctx) persistentPreRun(cmd *cobra.Command, _ []string) error {
 	}
 
 	c.cfgPath = flagString(cmd, "config")
-	cfg, err := config.Load(c.cfgPath) // "" → defaults + TOP_* env, no file read
+	cfg, err := config.Load(c.cfgPath) // "" → defaults + TOP_* env
 	if err != nil {
 		return c.usageErr(cmd, "loading config: "+err.Error())
+	}
+	// internal/config README's load order: CLI flags > TOP_* env > file >
+	// defaults — the canonical <dataDir>/top-config.yaml auto-loads when
+	// --config is absent and the file exists (Load applies TOP_* env ON
+	// TOP of the file's values, so env > file holds; tier-4 verified
+	// 2026-11-03: diff/status/history on the VM resolve git.url through
+	// it instead of re-exporting TOP_GIT_URL in every shell).
+	if c.cfgPath == "" {
+		if canonical := cfg.DataDir + "/top-config.yaml"; fileReadable(canonical) {
+			canonicalCfg, cerr := config.Load(canonical)
+			if cerr != nil {
+				return c.usageErr(cmd, "loading config: "+cerr.Error())
+			}
+			cfg = canonicalCfg
+		}
 	}
 	c.cfg = cfg
 	return nil
@@ -113,3 +129,14 @@ func (c *cctx) persistentPreRun(cmd *cobra.Command, _ []string) error {
 // Single definition lives in execute.go; this comment is where a reader
 // would first look for it.
 // (definition: execute.go invocation())
+
+// fileReadable reports whether path exists and reads (the canonical
+// config's presence gate; anything else — a wrong-mode file, an unreadable
+// path — surfaces through config.Load's typed errors, not here).
+func fileReadable(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	return f.Close() == nil
+}
