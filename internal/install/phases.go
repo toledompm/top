@@ -15,6 +15,7 @@ import (
 	"github.com/toledompm/top/internal/doctor"
 	"github.com/toledompm/top/internal/domain"
 	"github.com/toledompm/top/internal/exec"
+	"github.com/toledompm/top/internal/inventory"
 	"github.com/toledompm/top/internal/store"
 	"github.com/toledompm/top/internal/store/sqlite"
 )
@@ -122,7 +123,7 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 	// a dry-run, and a failing preflight is a clean, argument-free
 	// abort.
 	if opts.DryRun {
-		rep, perr := runPreflight(ctx, opts)
+		rep, perr := runPreflight(ctx, opts, nil) // no store: dry-run owns no ledger surface
 		res.Preflight = rep
 		if perr != nil {
 			return res, perr
@@ -149,7 +150,7 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 	// the same phase-op wrapper (its audit record exists like every
 	// other phase's). Findings abort before anything mutates.
 	if err := runPhase(ctx, st, opts, phasePreflight, res, func(opID string, res *Result, extra phaseExtras) error {
-		rep, perr := runPreflight(ctx, opts)
+		rep, perr := runPreflight(ctx, opts, st)
 		res.Preflight = rep
 		return perr
 	}); err != nil {
@@ -460,7 +461,7 @@ func phaseOf(op *domain.Operation) (int, bool) {
 // deploy-key material paths for phase 3). Read-only. The call only fails
 // after the findings are recorded (one run shows every fix at once),
 // with the typed ErrPreflightFailed.
-func runPreflight(ctx context.Context, opts Options) (doctor.Report, error) {
+func runPreflight(ctx context.Context, opts Options, st store.Store) (doctor.Report, error) {
 	rep := doctor.Run(ctx, doctor.Options{
 		Runner:             opts.Runner,
 		DataDir:            opts.DataDir,
@@ -472,6 +473,16 @@ func runPreflight(ctx context.Context, opts Options) (doctor.Report, error) {
 		DiskProbe:          opts.DiskProbe,
 		OSReleasePath:      opts.OSReleasePath,
 	})
+	// The name-collision firewall is LEDGER-AWARE on the re-install path:
+	// installation.md promises "re-running topctl install (same command,
+	// same flags) resumes or skips at the completed phases" — a TOP-owned
+	// core-top-controller row (bootstrap-owned or managed) is that OWN
+	// leftover and must not abort an idempotent re-install (tier-4
+	// verified 2026-11-03: the flat-fail made every re-install refuse).
+	// An unledgered collision stays a hard failure per ADR-0009.
+	if st != nil {
+		downgradeLedgeredControllerName(ctx, st, &rep)
+	}
 
 	// Installer-specific preflight checks (doctor stays generic).
 	addErrFinding(&rep, "repo/reachable", checkRepo(ctx, opts))
@@ -481,6 +492,38 @@ func runPreflight(ctx context.Context, opts Options) (doctor.Report, error) {
 		return rep, fmt.Errorf("%w: %s", ErrPreflightFailed, rep.Summary())
 	}
 	return rep, nil
+}
+
+// downgradeLedgeredControllerName relaxes the doctor's
+// names/top-controller failure when the CHECKED app is TOP's own
+// ledgered deployment (bootstrap-owned or managed row). Anything else keeps
+// the finding untouched.
+func downgradeLedgeredControllerName(ctx context.Context, st store.Store, rep *doctor.Report) {
+	if rep.OK() {
+		return
+	}
+	entries, err := st.ListLedger(ctx, inventory.KindApp)
+	if err != nil || len(entries) == 0 {
+		return // unreadable ledger never widens the preflight surface
+	}
+	for _, e := range entries {
+		if e.Identifier != doctor.ControllerAppName ||
+			(e.State != store.ResourceManaged && e.State != store.ResourceBootstrapOwned) {
+			continue
+		}
+		for i := range rep.Findings {
+			f := rep.Findings[i]
+			if f.ID != "names/top-controller" || f.Severity != doctor.SeverityFail {
+				continue
+			}
+			converted := f
+			converted.Severity = doctor.SeverityInfo
+			converted.Message = "TOP's ledgered own controller deployment exists (" +
+				string(e.State) + "): idempotent/resume install; adoption is already-managed or re-verifies"
+			converted.Hint = "phase 4 adopts the existing deployment; `topctl uninstall` when the host is being handed back"
+			rep.Findings[i] = converted
+		}
+	}
 }
 
 // addErrFinding turns one installer check error into a fail finding in
