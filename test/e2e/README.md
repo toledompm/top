@@ -74,6 +74,39 @@ the controller's `controller.pollIntervalSeconds`), `TOP_E2E_WEBHOOK_URL`
   `config:get` value assertions would hang (tier-4 verified
   2026-11-03).
 
+## Disposable dokku-in-docker VM (fleet-run shape)
+
+The scripts don't care where the VM comes from; the committed helper
+`dkvm.sh` + `controller-bootstrap/` assemble one on any Docker host
+(MacOS Docker Desktop works):
+
+- `test/e2e/dokku-vm.sh` boots the dokku/dokku container with the
+  HOST-daemon socket mount (the tier-3 e2etest shape), copies in
+  `topctl`+`jq`, starts a git-daemon over the seeded platform repo
+  (`git://host.docker.internal:9418/...` — installer-validateRepoURL's
+  accepted scheme), publishes 9418, and runs `topctl install --init`.
+  The shared state dir is a dockerd-side bind
+  (`/var/lib/e2e-top-dk` symlinked from `/var/lib/top` on the daemon
+  filesystem): the CLI (inside the VM), the controller container (via
+  top-metadata storage mount), and every dokku storage bind resolve to
+  ONE sqlite / secret dir. On the dockerd side only the symlink needs
+  making once (the VM container's bind resolves through it).
+- `test/e2e/controller-bootstrap/` builds the pinned
+  `ghcr.io/example/top/topctl:bootstrap-pinned` locally (no registry
+  exists): `topctl controller run` entrypoint, docker-cli, `git`, and a
+  `dokku` PATH shim (`docker exec -i top-e2e-vm dokku`) — a controller
+  container in a dokku-in-docker topology has no dokku CLI of its own;
+  the shim mirrors the tier-3 harness's docker-exec runner. It needs
+  `-v /var/run/docker.sock` via `dokku docker-options:add … deploy`.
+  The image runs as root: state/secret dirs are root-owned 0700.
+- Operator work between install and acceptance-2 green: replace the
+  template's FICTIONAL digest stand-ins with real arm64 digests in the
+  seeded repo, provision `<dataDir>/secrets/{webhook-hmac,
+  gf-security-admin-password}` (0600), drop the T-311 ports workaround
+  (ports entries livelock; healthcheck blocks validate against declared
+  ports, so omit both), and set the controller's TOP_GIT_URL
+  (`dokku config:set … --no-restart` — nothing wires it today).
+
 ## Helper tests (tier 1)
 
 `lib_test.go` runs the pure helpers of `lib.sh` under a real `sh`
