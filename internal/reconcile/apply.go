@@ -302,14 +302,27 @@ func (r *Reconciler) applyChanges(ctx context.Context, in RunInput, svc domain.S
 					"apply: storage change but no VolumeRoot configured; refusing to mount un-owned host dirs (ADR-0009)")
 			}
 			// The reconciler owns <VolumeRoot>/<app>-<entry> (ADR-0009's
-			// TOP-owned host dir, 0700): dokku 0.38's storage:create
-			// refuses a MISSING host dir outright ("unable to stat …",
-			// tier-4 verified 2026-11-03), so the dir is this apply's own
-			// precondition. MkdirAll is idempotent and converged-host
-			// cheap; the installer's wiring only provisioned
-			// {secrets,git,backups} — /volumes is lifecycle-owned here.
-			if err := os.MkdirAll(hostDir, 0o700); err != nil {
+			// TOP-owned host dir): dokku 0.38's storage:create refuses a
+			// MISSING host dir outright ("unable to stat …", tier-4
+			// verified 2026-11-03), so the dir is this apply's own
+			// precondition. MkdirAll is idempotent; the installer's wiring
+			// only provisioned {secrets,git,backups} — /volumes is
+			// lifecycle-owned here.
+			//
+			// Mode: core stays 0700 (TOP's own metadata, root-only).
+			// User workloads run as their image users (prometheus's
+			// nobody-uid TSDB panic, tier-4 verified 2026-11-03 —
+			// dokku's --chown false is TOP's contract, so writable-mode
+			// is the only workload-uid lever in v0) → 0777 dir.
+			mode := os.FileMode(0o700)
+			if svc.Ref.Namespace != domain.CoreNamespace {
+				mode = 0o777
+			}
+			if err := os.MkdirAll(hostDir, mode); err != nil {
 				return need, fmt.Errorf("ensure storage host dir %s: %w", hostDir, err)
+			}
+			if err := os.Chmod(hostDir, mode); err != nil {
+				return need, fmt.Errorf("set storage host dir mode %s: %w", hostDir, err)
 			}
 			app, _ := domain.AppName(svc.Ref.Namespace, svc.Ref.Name)
 			if err := r.backend.EnsureStorageEntry(ctx, app+"-"+name, hostDir); err != nil {
