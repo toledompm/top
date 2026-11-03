@@ -77,7 +77,7 @@ the controller's `controller.pollIntervalSeconds`), `TOP_E2E_WEBHOOK_URL`
 ## Disposable dokku-in-docker VM (fleet-run shape)
 
 The scripts don't care where the VM comes from; the committed helper
-`dkvm.sh` + `controller-bootstrap/` assemble one on any Docker host
+`dokku-vm.sh` + `controller-bootstrap/` assemble one on any Docker host
 (MacOS Docker Desktop works):
 
 - `test/e2e/dokku-vm.sh` boots the dokku/dokku container with the
