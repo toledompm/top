@@ -1,0 +1,7 @@
+#!/bin/sh
+# dokku-shim — the disposable dokku PATH shim for the controller's
+# dokku-in-docker test environments (tier-4 e2e only; fleet-verified
+# 2026-11-03): drives the VM's dokku through the mounted host-daemon
+# socket, exactly the tier-3 e2etest runner shape.
+# SPDX-License-Identifier: MIT
+exec docker exec -i "${TOP_DOKKU_HOST:-top-e2e-vm}" dokku "$@"

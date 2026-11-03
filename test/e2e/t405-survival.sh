@@ -43,7 +43,10 @@ CADV_APP=${TOP_E2E_CADV_APP:-observability-cadvisor}
 for bin in jq git "$TOPCTL_BIN" "$DOKKU_BIN" "$DOCKER_BIN"; do
     command -v "$bin" >/dev/null 2>&1 || die "precondition: '$bin' not on PATH"
 done
-[ -f "$PLATFORM_REPO/$PROBE_FILE" ] || die "precondition: not a platform repo checkout: $PLATFORM_REPO"
+case "$PLATFORM_REPO" in
+    git://*|https?://*|ssh://*|*git@*) ;; # remote URL: the clone itself proves the repo shape
+    *) [ -f "$PLATFORM_REPO/$PROBE_FILE" ] || die "precondition: not a platform repo checkout: $PLATFORM_REPO" ;;
+esac
 
 # the controller's running process container + its restart policy (the
 # kill-revival assertion is meaningless without `always`)

@@ -48,7 +48,10 @@ for bin in jq openssl curl git "$TOPCTL_BIN" "$DOKKU_BIN" "$DOCKER_BIN"; do
     command -v "$bin" >/dev/null 2>&1 || die "precondition: '$bin' not on PATH"
 done
 [ -r "$WEBHOOK_SECRET_FILE" ] || die "precondition: webhook secret not readable: $WEBHOOK_SECRET_FILE"
-[ -f "$PLATFORM_REPO/observability/grafana.yaml" ] || die "precondition: not a platform repo checkout: $PLATFORM_REPO"
+case "$PLATFORM_REPO" in
+    git://*|https?://*|ssh://*|*git@*) ;; # remote URL: the clone itself proves the repo shape
+    *) [ -f "$PLATFORM_REPO/observability/grafana.yaml" ] || die "precondition: not a platform repo checkout: $PLATFORM_REPO" ;;
+esac
 
 WEBHOOK_SECRET=$(cat "$WEBHOOK_SECRET_FILE")
 
@@ -66,7 +69,7 @@ commit_probe() { # commit_probe <quoted-value> <message> — probes the one
         || die "cannot inject $PROBE_KEY into $PROBE_FILE (unexpected env-block layout?)"
     git add "$PROBE_FILE"
     git -c user.name=top-e2e -c user.email=top-e2e@example.invalid \
-        commit -q -m "$2" || die "git commit failed"
+        commit -q --allow-empty -m "$2" || die "git commit failed"
     # The controller resolves the REPO (its mirror), not this checkout:
     # without the push the committed sha is unresolvable and the
     # convergence assertions would race against a sha that never landed
@@ -96,7 +99,7 @@ pass "push 1 landed (sha $SHA1)"
 DIFFJSON=$(topctl_json diff)
 echo "$DIFFJSON" | jq -e \
     --arg app "$GRAFANA_APP" \
-    '.services[] | select(.service == $app) | .source | test("observability/grafana.yaml:[0-9]+$")' \
+    '.data.services[] | select(.service | contains($app)) | .source | test("observability/grafana.yaml:[0-9]+$")' \
     >/dev/null \
     || die "diff does not surface $GRAFANA_APP with a file:line origin: $DIFFJSON"
 pass "drift row for $GRAFANA_APP carries file:line spec origin"
