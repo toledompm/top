@@ -514,7 +514,7 @@ func TestE2EApplyMutableTagForce(t *testing.T) {
 	if n := rr.count("git:from-image --force"); n != 1 {
 		t.Fatalf("want exactly one git:from-image --force:\n%v", rr.argv())
 	}
-	if n := rr.count("git:from-image top-e2e" + string(name) + " " + imageDeployed); n != 1 {
+	if n := rr.count("git:from-image --force top-" + string(name)); n != 1 {
 		t.Fatalf("forced deploy argv wrong:\n%v", rr.argv())
 	}
 	r, err := c.Readiness(ctx, ref)

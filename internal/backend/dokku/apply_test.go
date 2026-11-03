@@ -210,11 +210,12 @@ func TestApplyMutableTagForcePull(t *testing.T) {
 	wantArgvCount(t, f, "git:from-image --force top-web docker.example.com/example/whoami:1.0", 1)
 }
 
-// Force deploy whose pull brings no content change: real dokku 0.38.32
-// exits 1 with "No changes detected" (tier-3 verified 2026-11-03, M3 AC #6
-// remnant) — over a SERVING release that is success-with-noise (no deploy;
-// dokku records no build), and dokku's own `ps:rebuild` advice heals a
-// NOT-serving release.
+// dokku STILL records the attempt as a FAILED build (tier-3 verified:
+// builds:report build-status=failed after a no-change force), which
+// would poison the Readiness build gate. dokku's own directive for both
+// shapes (serving or not) is ps:rebuild — which IS the deploy the
+// ForcePull contract asked for; a genuine tag move exits 0 before reaching
+// this branch (tier-3 fixture, 2026-11-03).
 func TestApplyMutableTagForceNoChangeServing(t *testing.T) {
 	f := exectest.NewFakeRunner()
 	spec := desiredBase(tvsMutable)
@@ -227,7 +228,7 @@ func TestApplyMutableTagForceNoChangeServing(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 	wantArgvCount(t, f, "git:from-image --force top-web docker.example.com/example/whoami:1.0", 1)
-	wantArgvCount(t, f, "ps:rebuild", 0) // serving ⇒ no deploy record to heal
+	wantArgvCount(t, f, "ps:rebuild top-web", 1) // heal the leaked failed-build record
 }
 
 func TestApplyMutableTagForceNoChangeNotServingRebuilds(t *testing.T) {

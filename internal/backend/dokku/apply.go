@@ -493,23 +493,18 @@ func (c *Client) deploy(ctx context.Context, app string, spec domain.Service, ob
 	// verified 2026-11-03): `git:from-image` — with or without --force —
 	// exits 1 with "! No changes detected, skipping git commit / Call
 	// 'ps:rebuild'" when the app's stored source already matches the
-	// image. A FORCE deploy over a SERVING release whose stored source
-	// matches (simulated move: same registry content) is success-with-
-	// noise — the release keeps serving, nothing is redeployed, and
-	// dokku records no build at all (the "skipping git commit" branch).
-	// When the release is NOT serving, dokku's own advice heals it:
-	// ps:rebuild re-deploys the stored source. A genuine remote tag move
-	// changes the pulled image, so the stored source differs and no
-	// commit is skipped — the exit-1 path can only mean "no move".
+	// image. A genuine remote tag move changes the pulled image, so the
+	// stored source differs and no commit is skipped — the exit-1 path
+	// can only mean the pulled content matched what the app already
+	// stored. dokku STILL records the attempt as a FAILED build (tier-3
+	// verified: builds:report build-status=failed after a no-change
+	// force), which would poison the Readiness build gate, and dokku's
+	// own directive for both shapes is ps:rebuild — which IS the deploy
+	// the ForcePull contract asked for (the caller sets it only when the
+	// poll insisted movement happened; identical-content convergence
+	// redeploys the stored source cleanly, tier-3 2026-11-03).
 	combined := string(bytes.TrimSpace(stderr)) + "\n" + string(bytes.TrimSpace(stdout))
 	if exec.IsExitCode(derr, 1) && strings.Contains(combined, "No changes detected") {
-		if obs.Running {
-			if c.Log != nil {
-				c.Log.DebugContext(ctx, "no-change force deploy on serving release treated as no-move",
-					"op", "deploy image", "app", app, "image", imageRef)
-			}
-			return nil
-		}
 		if _, rerr := c.run(ctx, "deploy image rebuild", app, deployTimeout, "ps:rebuild", app); rerr != nil {
 			return wrapMaybe(rerr, "deploy image rebuild", app)
 		}
