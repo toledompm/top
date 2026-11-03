@@ -150,6 +150,14 @@ func newInstallCmd(c *cctx) *cobra.Command {
 				Namespaces:  c.cfg.Namespaces.Reserved,
 				SkipPorts:   flagBool(cmd, "skip-ports"),
 			}
+			// T-406: wire phase 5's reconciliation handoff (ADR-0005
+			// adoption). DryRun touches nothing, so it runs with the
+			// handoff unwired, exactly as installs before this wiring
+			// recorded their skip finding. No eager I/O happens here: the
+			// handoff opens its own state connection inside FirstRun.
+			if !flagBool(cmd, "dry-run") {
+				opts.FirstRun = c.wireFirstRun(args[0])
+			}
 			res, err := install.Install(cmd.Context(), opts)
 			if err != nil {
 				return c.installExit(cmd, res, err)
@@ -399,6 +407,16 @@ func warnSpecText(w io.Writer, warns []spec.Warning) error {
 // invariant). Deploy is NOT confirm-gated: it converges toward git
 // (ADR-0002), unlike prune deletions — the reconciler's consent pair stays
 // the destructive boundary.
+// The self-deploy exception (T-406): `topctl deploy core/top-controller`
+// is THE ADR-0005 human gate the reconciler's own runs point at — so the
+// command confirm-gates exactly that target (requireConfirm: --confirm or
+// the interactive self-announcement prompt; non-TTY without --confirm →
+// exit 2 like every gated mutation) and propagates RunInput
+// .SelfDeployApproved, which converts the reconciler's report-only self
+// refusal into the explicit-human apply. The output echoes the contract's
+// old-release preservation fact and the rollback path on both success and
+// failure (echoed BEFORE the run runs, so a dead controller still printed
+// it).
 func newDeployCmd(c *cctx) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deploy <ns/name>",
@@ -408,6 +426,15 @@ func newDeployCmd(c *cctx) *cobra.Command {
 			ref, err := domain.ParseServiceRef(args[0])
 			if err != nil {
 				return c.usageErr(cmd, err.Error())
+			}
+			selfDeploy := ref.Equal(reconcile.SelfRef)
+			if selfDeploy {
+				if err := c.requireConfirm(cmd, "deploying TOP's own controller (self-update, human-gated per ADR-0005)"); err != nil {
+					return err
+				}
+				if c.format != FormatJSON {
+					_, _ = fmt.Fprintln(c.out, "note: self-deploy of the controller (ADR-0005 human gate): the previous release keeps serving until the readiness gate passes; on failure the old release stays in place — roll back with `topctl recover redeploy`")
+				}
 			}
 			rev := flagString(cmd, "revision")
 			if rev != "" {
@@ -426,6 +453,12 @@ func newDeployCmd(c *cctx) *cobra.Command {
 			}
 			defer func() { _ = d.snap.Close() }()
 			in := c.runInput(d, false, false)
+			if selfDeploy {
+				// The explicit-human self-deploy: this run MAY apply the
+				// revision/image change to the adopted controller (the user
+				// actor is what validateRun requires).
+				in.SelfDeployApproved = true
+			}
 			in.Specs, err = deploySpecs(d.specs, ref)
 			if err != nil {
 				return c.usageErr(cmd, err.Error()) // unknown service/dependency: the operator's ask

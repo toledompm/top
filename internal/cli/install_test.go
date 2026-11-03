@@ -3,9 +3,12 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
+	stdexec "os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -134,21 +137,119 @@ func seedInstalledStore(t *testing.T, dataDir string) {
 	}
 }
 
+// splitGitRunner routes git/tar to the REAL host binaries and everything
+// else (dokku, wget, sudo probes) to the fake — the install split-runner
+// pattern, used by the CLI-level first-reconciliation wiring tests where
+// gitsource must run for real over a file:// fixture repo.
+type splitGitRunner struct{ f *exectest.FakeRunner }
+
+func (s splitGitRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	if name == "git" || name == "tar" {
+		var stderr bytes.Buffer
+		out, err := stdexec.CommandContext(ctx, name, args...).Output() //nolint:gosec // test fixture, project-local repo
+		return out, stderr.Bytes(), err
+	}
+	return s.f.Run(ctx, name, args...)
+}
+
+func (s splitGitRunner) RunStream(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {
+	if name == "git" || name == "tar" {
+		c := stdexec.CommandContext(ctx, name, args...)
+		c.Stdout, c.Stderr = stdout, stderr //nolint:gosec // test fixture, project-local repo
+		return c.Run()
+	}
+	return s.f.RunStream(ctx, stdout, stderr, name, args...)
+}
+
+// seedRepoFixture creates a minimal local platform repo (controller spec
+// matching the bootstrap deployment's image → the adoption's noop plan)
+// and commits it; returns the file:// URL and HEAD sha.
+func seedRepoFixture(t *testing.T) (string, string) {
+	t.Helper()
+	repo := t.TempDir() + "/platform-repo"
+	if err := fixtureRepo(t, repo, map[string]string{"core/top-controller.yaml": specControllerFix}); err != nil {
+		t.Fatal(err)
+	}
+	return "file://" + repo, fixtureHEAD(t, repo)
+}
+
+// fixtureRepo writes the given file tree into dir and commits it with a
+// fixture identity.
+func fixtureRepo(t *testing.T, dir string, files map[string]string) error {
+	t.Helper()
+	for rel, content := range files {
+		abs := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+	git := func(args ...string) {
+		t.Helper()
+		all := append([]string{"-C", dir, "-c", "user.name=Fixtures", "-c", "user.email=fixtures@example.invalid"}, args...)
+		out, err := stdexec.Command("git", all...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "-b", "main")
+	git("add", ".")
+	git("commit", "--quiet", "-m", "fixture specs")
+	return nil
+}
+
+// fixtureHEAD prints the committed HEAD sha.
+func fixtureHEAD(t *testing.T, repo string) string {
+	t.Helper()
+	out, err := stdexec.Command("git", "-C", repo, "rev-parse", "HEAD").CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// specControllerFix is the fixture controller spec — matching the
+// bootstrap deployment's image (the adoption's noop plan).
+const specControllerFix = `apiVersion: top/v1alpha1
+kind: Service
+metadata:
+  name: top-controller
+  namespace: core
+spec:
+  source:
+    image: ghcr.io/example/top/topctl
+    tag: bootstrap-pinned
+  ports:
+    - { name: http, containerPort: 8443 }
+  routing:
+    mode: internal
+  env:
+    TZ: UTC
+  restartPolicy: always
+`
+
 func TestInstallCLIFullRunEnvelope(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()
 	dataDir := filepath.Join(base, "top")
 	cfg := writeTestConfig(t, dataDir)
+	repoURL, wantRev := seedRepoFixture(t)
+	// T-406 split-runner: gitsource runs for real against the file://
+	// fixture; the store opens for the phase-5 handoff; dokku answers
+	// come from the fake.
 	f := exectest.NewFakeRunner()
 	seedFake(t, f)
+	runner := splitGitRunner{f: f}
 	key, kh := writeKeyFixtures(t, base)
 
 	args := []string{
 		"-o", "json", "--config", cfg, "--confirm",
-		"install", "ssh://git@git.example.com/example/platform.git",
+		"install", repoURL,
 		"--deploy-key", key, "--known-hosts", kh,
 	}
-	stdout, errOut, code := runCLIOpts(t, Options{Runner: f}, args...)
+	stdout, errOut, code := runCLIOpts(t, Options{Runner: runner}, args...)
 	if code != ExitOK {
 		t.Fatalf("full install exit = %d\nstderr: %s\nstdout: %s", code, errOut, stdout)
 	}
@@ -172,7 +273,7 @@ func TestInstallCLIFullRunEnvelope(t *testing.T) {
 	}) {
 		t.Errorf("created list must record the controller app: %+v", env.Data["created"])
 	}
-	_ = dataDir
+	_ = wantRev
 }
 
 // TestInstallCLIGate: non-TTY without --confirm → 2 (the gate), even
