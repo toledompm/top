@@ -151,6 +151,13 @@ type RunInput struct {
 	// "<namespace>-<name>"). Storage changes without a VolumeRoot fail
 	// contained — TOP never mounts un-owned host dirs (ADR-0009).
 	VolumeRoot string
+	// ProvisionSrc is the host path of THIS run's materialized revision
+	// (the gitsource snapshot dir). Minimal value: provisioning-entry
+	// trees ("<ns>/<svc>-<entry>", T-403, internal/reconcile/provision.go)
+	// are synced into their VolumeRoot entry dirs before any apply. Empty
+	// = provisioning-unaware composition: the sync is a no-op (never an
+	// error), so callers opt in by passing the dir.
+	ProvisionSrc string
 	// Sources maps a service ref to its spec origin for error/diff
 	// reporting; optional.
 	Sources map[domain.ServiceRef]SourcePos
@@ -180,6 +187,10 @@ type RunResult struct {
 	PruneRefusals []PruneRefusal
 	// DiffReport assembles the per-service diff with spec sources.
 	DiffReport DiffReport
+	// Synced lists the T-403 provisioning entries whose host dirs this
+	// run changed (paths only, never content — provision.go; empty for a
+	// converged tree or a provisioning-unaware composition).
+	Synced []SyncedEntry
 	// SelfAdopted reports whether THIS run saw the controller-self app's
 	// ownership row in state managed — the ADR-0005 bootstrap handoff
 	// recorded (T-402). It is the evidence the adoption-aware self
@@ -359,6 +370,18 @@ func (r *Reconciler) Run(ctx context.Context, in RunInput) (RunResult, error) {
 	}
 	if err := r.store.UpdateOperationState(ctx, op.ID, domain.OpRunning, "", r.clock.Now()); err != nil {
 		return res, wrapRun(op.ID, PhaseRecord, err)
+	}
+
+	// --- provisioning sync (T-403; before observe + apply — the mount
+	// targets this run converges must hold the GitOps tree first) ---------
+	if err := r.syncProvisioning(ctx, in, &res); err != nil {
+		res.Status = domain.RunFailed
+		res.FinishedAt = r.clock.Now()
+		recErr := r.recordRun(ctx, op, in, &res, err.Error())
+		if recErr != nil {
+			return res, wrapRun(op.ID, PhaseRecord, recErr)
+		}
+		return res, wrapRun(op.ID, PhaseProvision, err)
 	}
 
 	// --- order + diff ------------------------------------------------------------

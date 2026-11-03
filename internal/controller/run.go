@@ -108,6 +108,12 @@ func (d *Daemon) runTrigger(ctx context.Context, t Trigger) {
 		CorrelationID: t.CorrelationID,
 		HolderID:      d.cfg.HolderID,
 		VolumeRoot:    d.cfg.VolumeRoot,
+		// T-403: the materialized revision's host path feeds the
+		// provisioning-supply sync (internal/reconcile/provision.go) —
+		// config/provisioning trees land in the VolumeRoot entry dirs
+		// before any apply mounts them. Valid through defer snap.Close()
+		// (the sync copies, never references).
+		ProvisionSrc: snap.Dir,
 	}
 	out, err := d.cfg.Reconciler.Run(ctx, in)
 	d.metricRun(t, start, out, err)

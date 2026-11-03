@@ -257,7 +257,16 @@ func (r *Reconciler) applyChanges(ctx context.Context, in RunInput, svc domain.S
 			// The value goes straight into the backend call; it is never
 			// logged or recorded (the outcome's error text above and the
 			// plan carry only the NAME).
-			if err := r.backend.SetSecretEnv(ctx, svc.Ref, name, value); err != nil {
+			//
+			// The env KEY is SecretEnvKey(name) — the T-403 dash-kebab rule
+			// (README "T-403 wiring" item 6) — so `gf-security-admin-
+			// password` lands as GF_SECURITY_ADMIN_PASSWORD. The plan's
+			// vocabulary and this failure text keep the NAME.
+			envKey, kerr := SecretEnvKey(name)
+			if kerr != nil {
+				return need, kerr
+			}
+			if err := r.backend.SetSecretEnv(ctx, svc.Ref, envKey, value); err != nil {
 				return need, fmt.Errorf("set secret %s: %w", name, err)
 			}
 		case strings.HasPrefix(c.Path, "ports."):
