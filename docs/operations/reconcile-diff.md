@@ -1,8 +1,9 @@
 # How-to: reconcile, diff, and inspect operations
 
-For operators driving TOP's reconciliation loop by hand. All flags shown
-are copied from `topctl --help` at build time (M3, 2026-10-31); examples
-use the fictional platform repo `git@github.com:example/top-platform.git`.
+For operators driving TOP's reconciliation loop by hand. Flags below are
+verified against the implemented surface (last re-check: T-506 sweep,
+2026-11-03); examples use the fictional platform repo
+`git@github.com:example/top-platform.git`.
 
 ## `topctl diff` — read-only preview
 
@@ -43,14 +44,17 @@ gate → record → prune. Key flags:
   fail the run. Core-namespace services (and the controller's own app) are
   never prune candidates.
 - `--include-controller` — include `core/top-controller` in the run
-  (confirm-gated). Today it is **report-only**: drift on it is surfaced
-  with a change list, never auto-applied (ADR-0005 self-management is M4).
+  (confirm-gated). Applying drift on the controller's own app keeps the
+  ADR-0005 human gate: a reconcile run **reports** self-drift and stops
+  short — the human applies it with
+  `topctl deploy core/top-controller` (confirm-gated; the old release
+  keeps serving until the readiness gate passes, and on failure stays in
+  place). Adoption-aware posture details: `internal/reconcile/adopt.go`.
 - `--now` — accepted for symmetry with the contract; a manual CLI run is
   already immediate (backoff belongs to the controller loop).
 - `--dry-run` — print the plan, exit 0.
 
-Exit codes: `0` converged · `2` usage/gate-unmet · `3` operation failed,
-`2` usage/gate-unmet · `3` operation failed, including a lost lease
+Exit codes: `0` converged · `2` usage/gate-unmet · `3` operation failed, including a lost lease
 (envelope code `lease-conflict` — you raced the controller or another
 `topctl reconcile`; retry when free) and per-service contained failures ·
 `4` git/store/backend unavailable (e.g. no state store yet).
@@ -64,8 +68,21 @@ one writer at a time, other runs exit `3` with `lease-conflict`.
 topctl deploy <ns/name> [--revision SHA] [--dry-run]
 ```
 
-Not confirm-gated — it converges toward Git (ADR-0002); the destructive
-boundary is the prune consent pair above.
+Not confirm-gated for user apps — it converges toward Git (ADR-0002); the
+destructive boundary is the prune consent pair above. **One exception:
+`topctl deploy core/top-controller`** (the controller's own service) is
+confirm-gated (ADR-0005 human gate for self-management, mirrored in
+`docs/contracts/cli.md`'s deploy row; blessing flagged R4). It applies
+the pending self-drift, keeps the previous release serving until the
+readiness gate passes, and preserves the old release on failure (paid
+back with `topctl recover redeploy`).
+
+## `topctl status` — honest stub
+
+`topctl status` remains the M1 validated stub (it answers, but carries no
+real drift view). The real drift surface today is `topctl diff` — read
+that instead. Scoping a real drift view into `status` is a queued owner
+question (m4-review.md §4).
 
 ## `topctl history` — operation records
 

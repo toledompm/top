@@ -19,10 +19,10 @@
   and never assumes passwordless sudo).
 - Docker installed and the daemon reachable, or allow the gated Dokku install
   to bring it. Docker engine ≥ 24.0; Dokku ≥ 0.38 when already present.
-- A Git repository of ServiceSpecs readable via a read-only deploy key. The
-  committed example repo and the `--init` repo-creation flow both land with
-  T-212 (M3); until then, provision the repository yourself before
-  installing (`docs/contracts/service-spec.md` has the spec surface).
+- A Git repository of ServiceSpecs readable via a read-only deploy key.
+  The committed example repo (`examples/platform-repo`, T-401's template
+  fleet) ships with TOP, and `--init` can seed one initial commit into a
+  remote the operator created empty (T-212; see `installer.md` §`--init`).
 - Ports 80/443 free if you will use HTTP proxying (skippable with
   `--skip-ports`).
 
@@ -116,8 +116,10 @@ $ ./topctl install https://github.com/example/platform-repo.git \
 
 ## What happens (implemented phases)
 
-Phases actually run and reported by `topctl install` (this list mirrors
-`Result.PhasesRun` — verified per the dry-run integration tests):
+Phases 0–6 run and are reported by `topctl install` (the labels mirror
+`Result.PhasesRun` — `internal/install/phases.go` `phaseNames`, verified
+per the dry-run integration tests), matching
+`docs/contracts/installer.md`'s 0–6 numbering:
 
 | # | Phase label | What it does |
 | --- | --- | --- |
@@ -126,14 +128,15 @@ Phases actually run and reported by `topctl install` (this list mirrors
 | 2 | `2-dokku-setup` | With `--install-dokku`: run the pinned upstream bootstrap after explicit confirmation (or the exact sudo commands as a fallback; ADR-0009). Without it: stop with instructions when Dokku is missing; verify version/health when present (≥ 0.38). |
 | 3 | `3-platform-wiring` | `<dataDir>/{secrets,git,backups}` at 0700, `top-internal` network, provision the deploy key + pinned known_hosts, register the repo and verify resource resolution. |
 | 4 | `4-bootstrap-deploy` | One-time direct Dokku deploy of `core-top-controller` from the pinned bootstrap image, with the `top-metadata` SQLite storage mount; recorded in the ledger as `bootstrap-owned`. |
-| 5 | `5-report` | Prints what was created / adopted / left alone, which secrets still need provisioning, and suggested next commands. |
+| 5 | `5-first-reconcile` | One reconciler pass (the install CLI's `FirstRunner` seam, `internal/install/adopt.go`): validates/loads the spec — including the example/fleet repo — and hands ownership of the deployment over per ADR-0005: the ledger row converts `bootstrap-owned → managed` (`store.MarkManaged`), annotated in the phase-5 op record (`adoptedByOp`/`firstRunOp`; wording amendment pending owner blessing, m4-review.md R3). |
+| 6 | `6-report` | Prints what was created / adopted / left alone, which secrets still need provisioning, and suggested next commands. |
 
-> **Contract alignment note:** `docs/contracts/installer.md`'s **phase 5
-> (first reconciliation)** — the controller adopting itself and reconciling
-> `core` then `observability` — lands in **M3/M4** with the GitOps controller
-> (T-212 carries the `--init` flow). Until then, install exits 0 after the
-> bootstrap deploy + report, and the controller picks up reconciliation from
-> its next run.
+> **Contract alignment note:** phase 5 (first reconciliation) and phase 6
+> landed in M4 (T-402). One residual wording drift against
+> `docs/contracts/installer.md:37` ("the bootstrapped controller loads
+> the repo" vs the implementation running the phase-5 pass from the
+> install CLI) is exactly m4-review.md §4 **R3** — one owner-blessed
+> sentence; do not re-word it here before the verdict.
 
 Resumability: every phase records a store operation (`kind: install`,
 `details.phase`), so re-running `topctl install` (same command, same flags)
@@ -155,8 +158,10 @@ next steps.
   `/webhooks/github` endpoint with the shared secret — or do nothing and rely
   on the documented default of **poll-only sync** (60 s poll + hourly
   reconcile; ADR-0003). Webhooks are an optimization, never a requirement.
-- Watch it converge: once the controller is reconciling (M3+),
-  `topctl status` and `topctl diff` show the per-service state.
+- Watch it converge: once the controller is reconciling, `topctl diff`
+  (exit 0 = converged, 1 = drift present) and `topctl history` show the
+  per-service state; `topctl status` is still an honest stub (`topctl
+  diff` is the real drift surface today).
 
 Exit codes (CLI contract): 0 ok; 1 preflight/diagnose findings; 2 usage; 3
 gate/sudo refusal or phase failure; 4 store/backend unavailability.
@@ -167,7 +172,7 @@ gate/sudo refusal or phase failure; 4 store/backend unavailability.
 | --- | --- | --- |
 | `install: repo "…" does not look like a git remote (want https://…, ssh://…, or git@host:path)` (exit 2) | malformed repo argument | use a full `https://github.com/example/platform-repo.git`-style URL; `topctl install --help` for the surface |
 | `install: preflight failed: doctor found N failure(s), M warning(s)` (exit 1) | phase-0 failures (missing docker, wrong OS tier, port 80/443 held, too little disk/RAM, name collision with a reserved namespace) | run `./install-top.sh --check` and fix each named failure with its printed hint |
-| `install: preflight failed` mentioning `repo/reachable` | repo missing/empty/unreachable without `--init` | push the repository first (or wait for T-212/M3 `--init`); ADR-0005: no silent repo mutation |
+| `install: preflight failed` mentioning `repo/reachable` | repo missing/empty/unreachable without `--init` | push the repository first, or pass `--init` against an EMPTY remote (T-212: `installer.md` §`--init`); ADR-0005: no silent repo mutation |
 | `install: preflight failed` mentioning `install-input` | `--deploy-key`/`--known-hosts` paths not given or unreadable | supply both files (required in v0); make sure the key exists and the user can read it |
 | install exits **2** with "gated" guidance | ran a mutating command without `--confirm` | add `--confirm` (deterministic path) or answer the interactive prompt |
 | sudo dialog appears mid-install | ADR-0009 prints exact host commands and never assumes passwordless sudo | confirm once at the keyboard; for scripting, configure passwordless sudo for the install user |

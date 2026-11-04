@@ -1,8 +1,12 @@
 # Tearing down TOP
 
-> Status: **real (M2)** — matches the implemented `topctl uninstall`
-> (T-208) and `docs/contracts/installer.md`'s teardown contract.
-> Ownership and approval rules: ADR-0009.
+> Status: **real (M2, re-verified against the code in the T-506 sweep,
+> 2026-11-03)** — matches the implemented `topctl uninstall`
+> (`internal/install/uninstall.go`) and
+> `docs/contracts/installer.md`'s teardown contract, with one documented
+> implementation choice: `--uninstall-dokku` **prints** Dokku's purge
+> commands instead of auto-running them (below). Ownership and approval
+> rules: ADR-0009.
 
 ## Principles
 
