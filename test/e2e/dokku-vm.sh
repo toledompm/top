@@ -78,7 +78,7 @@ docker exec -e TOP_GIT_URL="$REPO_URL" -e TOP_GIT_BRANCH=main -e TOP_INIT_TOKEN=
 # fleet report); the operator supplies the controller env + the canonical
 # config file for every CLI shell.
 docker exec -e REPO_URL="$REPO_URL" "$VM" sh -c '
-    # The daemon drives the VM's dokku through the socket-mounted shim:
+    # The daemon drives the VM dokku through the socket-mounted shim:
     # the CONTAINER (an ordinary host-daemon deployment) needs the host
     # docker socket to reach `docker exec ... top-e2e-vm dokku` (tier-4
     # verified 2026-11-03: without it every poll run failed at ensure).
