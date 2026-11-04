@@ -12,6 +12,10 @@ beside the scripts (`lib_test.go`) and run on every PR.
 | --- | --- | --- |
 | `t404-webhook-poll.sh` | M4 acceptance 3+4: push → provider webhook → converged (actor=webhook op record, app-level deploy evidence, file:line drift origin); then the deliberately-dropped webhook → poll repairs convergence with no webhook evidence on the record | T-404 |
 | `t405-survival.sh` | M4 acceptance 8: `docker kill` controller ⇒ workloads + monitoring stack keep running; revival via restart policy and via `topctl recover restart`; missed change reconciles on return; **no redeploy** across the exercise (controller image/container fingerprint stable ⇒ git:from-image never re-ran; adoption stays one-shot) | T-405 |
+| `t504-kill-deploy.sh` | M5 acceptance 7 (failure-injection matrix, kill-mid-deploy): `docker kill` the controller the instant our push's op row is armed on the record surface ⇒ old release still serves (value + serving-container fingerprint), no completed row while dead, revive re-diffs the same sha to a fresh succeeded row, killed run's non-terminal row present then superseded | T-504 |
+| `t504-wedged-db.sh` | Failure-injection matrix "SQLite wedged" (acceptance 7 + the diagnose-names-it criterion): `chmod 000 /var/lib/top/top.db` (+ WAL/SHM sidecars) ⇒ controller exits loud (restart-policy crash loop), history fails bounded (never a panic), `recover diagnose` carries a `store/*` FAIL finding naming the DB with a hint, chmod-back + `recover restart` recovers, push reconciles through the repaired store | T-504 |
+| `t504-disk-pressure.sh` | Failure-injection matrix "Disk pressure": fill the TOP data FS ≥95% used (256 MB blocks; 2%-free un-brick floor) ⇒ `recover diagnose` names `disk/headroom` as FAIL, diff/history stay bounded, controller survives, unfill → diagnose clean. The engine refusal/prune posture runs hermetically: `internal/backup/diskpressure_test.go` (Create bounded refusal + result=error metric + no registry pollution; Plan correct under wedge; stale backup prunable after lift). OPEN ITEM for T-506: `topctl backup create` is still notImpl — the ENOSPC-on-backup-create scripted phase lands with the CLI | T-504 |
+| `t504-reboot.sh` | Failure-injection matrix "Host reboot": container-set-level restart (t405's fingerprint sharpened to the whole managed set) or a real VM reboot under `TOP_E2E_REBOOT_VM=1` ⇒ full set running again ≤180s, diagnose clean, **no redeploys** (container-set fingerprints stable), poll converges a fresh post-reboot push | T-504 |
 
 Tier-3 twins (HMAC/dedup handler math, adapter apply semantics) live in
 `internal/backend/dokku/e2etest` under the `e2e` build tag.
@@ -49,7 +53,13 @@ the controller's `controller.pollIntervalSeconds`), `TOP_E2E_WEBHOOK_URL`
 `TOP_E2E_PROM_APP`, `TOP_E2E_NODE_APP`, `TOP_E2E_CADV_APP`,
 `TOP_E2E_USER_APP` for the optional tenant-app survival check,
 `TOP_E2E_PROBE_FILE`, `TOP_E2E_PROBE_KEY`), `TOPCTL_BIN`,
-`DOKKU_BIN`, `DOCKER_BIN`.
+`DOKKU_BIN`, `DOCKER_BIN`, plus the T-504 knobs:
+`TOP_E2E_DB_FILE` (t504-wedged-db, default `/var/lib/top/top.db`),
+`TOP_E2E_FILL_DIR` / `TOP_E2E_FILL_THRESHOLD` (t504-disk-pressure,
+defaults `/var/lib/top` and `95`), and the t504-reboot mode pair
+`TOP_E2E_REBOOT_VM` + `TOP_E2E_REBOOT_SKIP_REBOOT` (the real-VM reboot
+is invoked under your supervisor; re-run the script in verify mode:
+issue the reboot, wait, then re-run with `TOP_E2E_REBOOT_SKIP_REBOOT=1`).
 
 ## What actually executes (evidence surfaces)
 
