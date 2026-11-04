@@ -4,7 +4,6 @@ package recover
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -123,11 +122,15 @@ func healthSnapshot(ctx context.Context, opts Options, app string) (bool, bool, 
 
 // Redeploy redeploys the controller directly via Dokku:
 //
-//  1. resolve what to deploy (--revision flag > store checkpoint
+//  1. refuse when a restore holds the ADR-0007 serialization lease (a
+//     fresh controller process against a DB mid-replacement is exactly
+//     the corruption restore exists to avoid — the restore-side guard
+//     matches the M5 acceptance: no recovery verb overlaps restore);
+//  2. resolve what to deploy (--revision flag > store checkpoint
 //     last-known-good, git sha or image ref > pinned bootstrap image);
-//  2. run its commands (git:sync+ps:rebuild for a sha — which requires
+//  3. run its commands (git:sync+ps:rebuild for a sha — which requires
 //     the config's git.url — or git:from-image for an image ref);
-//  3. wait bounded for health.
+//  4. wait bounded for health.
 //
 // A broken or absent store does NOT abort (ADR-0005: recovery survives
 // a broken store): we fall back to the pinned bootstrap image and carry
@@ -135,6 +138,12 @@ func healthSnapshot(ctx context.Context, opts Options, app string) (bool, bool, 
 func Redeploy(ctx context.Context, opts Options, revisionFlag string, dryRun bool) (*Result, error) {
 	opts.applyDefaults()
 	app := controllerApp()
+
+	if !dryRun {
+		if err := redeployProbesRestore(ctx, opts); err != nil {
+			return nil, err
+		}
+	}
 
 	choice := resolveDeploySource(ctx, opts, revisionFlag, controllerRef)
 	res := &Result{
@@ -257,20 +266,6 @@ func lastKnownGoodFromStore(ctx context.Context, opts Options, ref domain.Servic
 	return "", "", "bootstrap fallback", []string{fmt.Sprintf("state store %s has no last-known-good checkpoint yet (fresh install or a never-green reconcile)", dbPath(opts))}
 }
 
-// Restore is SCAFFOLD ONLY in the M2 slice: it refuses to run.
-//
-// WHY (docs/contracts/backup-recovery.md + ADR-0007): restore overwrites
-// live metadata, so the contract demands the safeguard order FIRST —
-// controller stopped → live watermark vs backup watermark (refuse
-// without --force) → safety snapshot of the current DB → replace + run
-// migrations + restart controller + verify health → reconciliation
-// hint. That engine is Milestone 5 (T-503); the CLI surface exists now
-// so agents get an honest refusal (exit 3, code not-implemented)
-// instead of a stub pretending.
-func Restore(_ context.Context, _ Options, _ string) error {
-	return ErrRestoreDeferred
-}
-
-// ErrRestoreDeferred marks the not-yet-M5 restore path; the CLI matches
-// it with errors.Is and maps it to exit 3 + a runbook hint.
-var ErrRestoreDeferred = errors.New("restore lands in Milestone 5 (T-503): the ADR-0007 safeguard order — stop controller, watermark check, safety snapshot, replace + migrate + restart + verify — must exist before a restore may run; the manual path is documented in docs/operations/recovery.md")
+// See restore.go: Restore is the M5 (T-503) safeguarded body of the
+// backup-recovery contract's restore bullet — the ADR-0007 safeguard
+// order lives there.

@@ -37,6 +37,7 @@
 package recover
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/toledompm/top/internal/doctor"
@@ -109,6 +110,11 @@ type Options struct {
 	// DataDir/top-config.yaml. The CLI passes the operator's --config
 	// path when one was given.
 	ConfigFile string
+	// BackupsDir is the backup tree (ADR-0007's /var/lib/top/backups):
+	// restore writes its safety snapshots into BackupsDir/safety and
+	// stages offsite-pulled backups into BackupsDir/remote-staging.
+	// "" → DataDir/backups.
+	BackupsDir string
 	// BootstrapImage is the pinned controller image for the
 	// no-store-revision fallback; "" → DefaultBootstrapImage.
 	BootstrapImage string
@@ -124,6 +130,9 @@ type Options struct {
 	// PollInterval spaces ps:report polls during the health wait;
 	// 0 → DefaultPollInterval.
 	PollInterval time.Duration
+	// Log receives the restore path's engine log lines (slog); optional
+	// (nil → discard).
+	Log *slog.Logger
 }
 
 // applyDefaults fills the production seams (mutating only the Options
@@ -137,6 +146,9 @@ func (o *Options) applyDefaults() {
 	}
 	if o.ConfigFile == "" {
 		o.ConfigFile = o.DataDir + "/" + configFile
+	}
+	if o.BackupsDir == "" {
+		o.BackupsDir = o.DataDir + "/backups"
 	}
 	if o.BootstrapImage == "" {
 		o.BootstrapImage = DefaultBootstrapImage
@@ -158,6 +170,15 @@ func (o *Options) applyDefaults() {
 // dbPath is the state file this build understands for the recovery
 // contract: <dataDir>/top.db.
 func dbPath(opts Options) string { return opts.DataDir + "/" + dbFile }
+
+// logOrDiscard gives restore's engine a usable logger when none was
+// injected (the recover CLI carries no logging flag of its own).
+func (o *Options) logOrDiscard() *slog.Logger {
+	if o.Log != nil {
+		return o.Log
+	}
+	return slog.New(slog.DiscardHandler)
+}
 
 // controllerApp resolves the recovery contract's fixed app name. The
 // controller namespace is `core` by ADR-0004/0005 (reserved and

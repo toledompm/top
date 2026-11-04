@@ -763,8 +763,8 @@ func newBackupCmd(c *cctx) *cobra.Command {
 
 // newRecoverCmd — the independent recovery path (ADR-0005): diagnose
 // fully real (M2 slice of docs/contracts/backup-recovery.md's Recovery
-// section); restart/redeploy real-but-minimal; restore scaffold-only
-// (lands M5/T-503 behind the ADR-0007 safeguards). All broadcast through
+// section); restart/redeploy real-but-minimal; restore REAL (M5/T-503)
+// behind the ADR-0007 safeguard order. All broadcast through
 // internal/recover with Options.Runner as the process seam — the real
 // host unless a test injected a fake. Findings render in the doctor
 // vocabulary (internal/doctor's Report shape, reused); exit code:
@@ -842,22 +842,23 @@ func newRecoverCmd(c *cctx) *cobra.Command {
 
 	restore := &cobra.Command{
 		Use:   "restore",
-		Short: "Restore TOP's metadata from a backup (confirm-gated; lands M5)",
+		Short: "Restore TOP's metadata from a backup (confirm-gated; ADR-0007 safeguards)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := c.requireConfirm(cmd, "restoring TOP's metadata from a backup"); err != nil {
+			backupFlag := flagString(cmd, "backup")
+			if backupFlag == "" {
+				return c.usageErr(cmd, "--backup <file-or-user@host:path> is required (registered paths come from `topctl backup list`; user@host:path pulls the offsite lifeline first)")
+			}
+			if err := c.requireConfirm(cmd, "restoring TOP's metadata from a backup (the controller is stopped; refuses to overwrite a newer database without --force)"); err != nil {
 				return err
 			}
-			if err := recover.Restore(cmd.Context(), c.recoverOpts(), flagString(cmd, "backup")); err != nil {
-				if errors.Is(err, recover.ErrRestoreDeferred) {
-					return c.emitErrCode(cmd, "not-implemented", ExitFailed, err.Error())
-				}
-				return c.emitErrCode(cmd, "failed", ExitFailed, err.Error())
-			}
-			return nil
+			return c.runRecoverAction(cmd, "restore", func(o recover.Options) (*recover.Result, error) {
+				return recover.Restore(cmd.Context(), o, backupFlag, flagBool(cmd, "force"), flagBool(cmd, "dry-run"))
+			})
 		},
 	}
-	restore.Flags().String("backup", "", "backup file to restore (required once restore lands in M5)")
+	restore.Flags().String("backup", "", "backup file to restore (required; a user@host:path spec is pulled from the offsite target via rsync first)")
+	restore.Flags().Bool("force", false, "accept restoring over a live DB whose operations are newer than the backup's watermark (the rollback loss is explicit, ADR-0007 safeguard 2)")
 	restore.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
 
 	recoverCmd.AddCommand(restart, redeploy, restore)

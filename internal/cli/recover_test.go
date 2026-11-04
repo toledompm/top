@@ -213,27 +213,25 @@ func TestRecoverRedeployWire(t *testing.T) {
 	})
 }
 
-// TestRecoverRestoreRefusesUntilM5 — the scaffold contract: after the
-// confirm gate, restore prints the honest refusal (exit 3, code
-// "not-implemented") and runs NOTHING.
-func TestRecoverRestoreRefusesUntilM5(t *testing.T) {
+// TestRecoverRestoreRequiresBackup — the T-503 restore keeps the CLI
+// contract: confirm-gated, --backup REQUIRED, and without it a usage
+// error (exit 2) runs nothing.
+func TestRecoverRestoreRequiresBackup(t *testing.T) {
 	t.Parallel()
 	f := healthyDokku(t)
 	_, errS, code := runRecoverCLI(t, f, "recover", "restore", "--confirm", "-o", "json")
-	if code != ExitFailed {
-		t.Fatalf("restore exit = %d, want %d", code, ExitFailed)
+	if code != ExitUsage {
+		t.Fatalf("restore exit = %d, want %d (usage)", code, ExitUsage)
 	}
 	var env ErrEnvelope
 	if err := json.Unmarshal([]byte(strings.TrimSuffix(errS, "\n")), &env); err != nil {
 		t.Fatalf("restore stderr not json: %v (%q)", err, errS)
 	}
-	if env.Error.Code != "not-implemented" ||
-		!strings.Contains(env.Error.Message, "Milestone 5") ||
-		!strings.Contains(env.Error.Message, "T-503") {
-		t.Errorf("restore refusal drifted: %+v", env)
+	if !strings.Contains(env.Error.Message, "--backup") {
+		t.Errorf("restore guidance must name --backup: %+v", env)
 	}
 	for _, c := range f.Recorded() {
-		t.Errorf("a refusing restore ran nothing; ran: %s", c.String())
+		t.Errorf("a usage-missing restore ran nothing; ran: %s", c.String())
 	}
 }
 

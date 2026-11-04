@@ -4,7 +4,6 @@ package recover
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -265,17 +264,6 @@ func TestRedeployDryRun(t *testing.T) {
 	if !strings.Contains(joined, "dokku git:sync core-top-controller https://github.com/example/top abc123def4560") ||
 		!strings.Contains(joined, "dokku ps:rebuild core-top-controller") {
 		t.Errorf("dry-run plan lacks the command pair:\n%s", joined)
-	}
-}
-
-func TestRestoreIsScaffoldRefusal(t *testing.T) {
-	t.Parallel()
-	if err := Restore(context.Background(), Options{}, "some/backup.db"); !errors.Is(err, ErrRestoreDeferred) {
-		t.Fatalf("Restore must refuse with ErrRestoreDeferred, got %v (restore is T-503)", err)
-	}
-	if !strings.Contains(ErrRestoreDeferred.Error(), "Milestone 5") ||
-		!strings.Contains(ErrRestoreDeferred.Error(), "T-503") {
-		t.Errorf("the refusal must name the milestone and task: %v", ErrRestoreDeferred)
 	}
 }
 

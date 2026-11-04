@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -256,6 +258,89 @@ func (o *Offsite) run(ctx context.Context, b *store.Backup) error {
 		return err
 	}
 	return nil
+}
+
+// Pull stages ONE remote file from an offsite target onto the local
+// filesystem and returns the staged path (T-503 restore lifeline: when the
+// local backup directory is gone, the offsite copy is the recoverable
+// source — docs/operations/recovery.md "whole host lost" row + ADR-0007).
+//
+// The spec argument is the exact same grammar as Target ("<user>@<host>:<path>").
+// The caller passes the operator's `--backup` argument here, so a
+// `topctl recover restore --backup user@host:…` flows through the identical
+// security posture as Copy: rsync over the BatchMode ssh command, argv
+// atoms only, whitelisted ExtraArgs, no shell, no secret handling. The
+// ONLY difference from Copy is direction: remote → local staging dir
+// (mode 0700, created on demand). The staged name keeps its remote
+// basename; a collision overwrites (staging is scratch space owned by the
+// single restore in flight).
+//
+// Pull is plain file movement: it never verifies, never registers, and
+// never qualifies a file for restore by itself — restore's admission
+// (watermark + integrity) happens after staging. Metrics are NOT stamped
+// (a pulled file is not a CopyOffsite backup attempt in the scheduling
+// sense); the log line keeps the runbook trail.
+func (o *Offsite) Pull(ctx context.Context, spec, stagingDir string) (string, error) {
+	if o.Runner == nil {
+		return "", fmt.Errorf("offsite pull: %w: nil Runner", domain.ErrInvalid)
+	}
+	if o.Log == nil {
+		o.Log = slog.New(slog.DiscardHandler)
+	}
+	if _, _, _, err := parseRemoteSpec(spec); err != nil {
+		return "", fmt.Errorf("offsite pull: %w", err)
+	}
+	for _, f := range o.ExtraArgs {
+		if !whitelistFlags[f] {
+			return "", fmt.Errorf("offsite pull rsync flag %q: not whitelisted (allowed: -a/--archive, -z/--compress, -c/--checksum, -W/--whole-file): %w", f, domain.ErrInvalid)
+		}
+	}
+	if o.Port < 0 || o.Port > 65535 {
+		return "", fmt.Errorf("offsite ssh port %d: must be 1-65535 (0 = default): %w", o.Port, domain.ErrInvalid)
+	}
+	if err := os.MkdirAll(stagingDir, 0o700); err != nil {
+		return "", fmt.Errorf("offsite pull staging dir %s: %w", stagingDir, err)
+	}
+	local := filepath.Join(stagingDir, filepath.Base(remotePath(spec)))
+
+	// argv mirrors Copy's exactly with source/target swapped and a .part
+	// landing name: rsync [flags] -e <ssh> <user@host:path> <local>.part
+	// (the .part avoids claiming a valid staged file after a mid-run
+	// failure on filesystems without rename-atomicity guarantees).
+	args := append([]string{}, o.ExtraArgs...)
+	args = append(args, "-e", o.sshCommand(), spec, local+".part")
+
+	_, stderr, rerr := o.Runner.Run(ctx, offsiteBinary, args...)
+	if rerr != nil {
+		err := fmt.Errorf("offsite pull %s → %s: %w", spec, local, rerr)
+		if len(stderr) > 0 {
+			err = fmt.Errorf("%w (stderr: %s)", err, truncate(strings.TrimSpace(string(stderr)), exec.ExcerptLimit))
+		}
+		o.Log.Warn("offsite pull failed", "target", spec, "err", err)
+		return "", err
+	}
+	if rerr2 := os.Rename(local+".part", local); rerr2 != nil {
+		return "", fmt.Errorf("offsite pull staging %s: %w", local, rerr2)
+	}
+	o.Log.Info("offsite pull staged", "target", spec, "staged", local)
+	return local, nil
+}
+
+// parseRemoteSpec validates one "<user>@<host>:<path>" file spec — the
+// same grammar Offsite.remote() enforces for Target, factored through a
+// zero Offsite so the restore path can validate the operator's argument
+// without touching the copier's wiring.
+func parseRemoteSpec(spec string) (user, host, path string, err error) {
+	o := Offsite{Target: spec}
+	return o.remote()
+}
+
+// remotePath extracts the :-separated path part of a validated spec.
+func remotePath(spec string) string {
+	if i := strings.IndexByte(spec, ':'); i >= 0 {
+		return spec[i+1:]
+	}
+	return spec
 }
 
 // resultOf maps an error to the bounded metric label.
