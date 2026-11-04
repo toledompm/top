@@ -8,17 +8,22 @@ has no code path to — a healthy controller, Prometheus, or Grafana.
 Every action's output carries the exact manual command equivalent:
 *"recovery output doubles as a runbook."*
 
-Status (M2 slice): `diagnose` is fully real and read-only;
-`restart`/`redeploy` are real-but-minimal (M5/T-503 hardens them);
-`restore` is a deliberate SCAFFOLD that refuses to run (exit 3) until
-the ADR-0007 safeguard order exists.
+Status (M5): `diagnose` is fully real and read-only; `restart`/`redeploy`
+are real (bounded health waits); `restore` is REAL as of T-503 — the
+verbatim ADR-0007 safeguard order with typed pre-mutation refusals
+(watermark vs `--force`, schema-newer, corrupt, in-flight lease, missing
+live DB) and the offsite `user@host:path` lifeline
+(`backup.Offsite.Pull` before admission). `internal/recover/README.md`'s
+M2-era "scaffold refuses" text below is history; see
+`restore.go`'s doc comment for the exact order.
 
 ## Layout
 
 ```
 recover.go    Options/seams, defaults, the Result runbook record
 diagnose.go   all read-only checks (one function per check)
-actions.go    Restart / Redeploy / Restore (+ ErrRestoreDeferred)
+actions.go    Restart / Redeploy (ErrRestoreDeferred was removed in T-503)
+restore.go    Restore — the ADR-0007 safeguard order (T-503)
 render.go     Summary / RenderText / RenderResultText (doctor-style rows)
 probe.go      systemDiskProbe (statfs; dedup TODO recorded there)
 ```
@@ -80,11 +85,21 @@ the open instead (typed), which is downgrade protection doing its job.
   pinned image and carries the store failure in the result notes
   (ADR-0005: the store is evidence, not a dependency). Bounded health
   wait after every real deploy step.
-- **Restore** — refuses: `ErrRestoreDeferred` (exit 3, code
-  `not-implemented`). The ADR-0007 safeguard order (stop controller →
-  watermark vs `--force` → safety snapshot → replace + migrate +
-  restart + verify) comes first, in M5/T-503. The refusal text points
-  at docs/operations/recovery.md.
+- **Restore** — REAL (T-503), `restore.go`: the safeguard order is
+  verbatim the contract (stop controller → watermark vs `--force` →
+  safety snapshot as a real registered backup under
+  `<backups>/safety/` → atomic replace + migrate forward → restart +
+  bounded health wait + `reconcile --now` hint) with typed,
+  pre-mutation refusals: `ErrRestoreWatermark` (older backup over
+  newer DB without `--force`), `ErrRestoreSchemaNewer` (forward-only
+  migrations cannot read a newer-schema file), `ErrRestoreCorrupt`,
+  `ErrRestoreSafetySnapshot` (abort, live DB untouched),
+  `ErrRestoreNoLiveDB` (fresh-host flow: install first),
+  `ErrRestoreInFlight` (the "restore" lease held).
+  `--backup user@host:path` pulls the offsite lifeline via
+  `backup.Offsite.Pull` first; admission is by the file's watermark +
+  integrity, never by registry copy-history (contract's Restore
+  mechanics proposal, owner decision R7).
 
 The ADR-0009 gate lives at the CLI (`--confirm` needed; interactive TTY
 prompt otherwise), exactly like every other mutating command.
@@ -93,8 +108,8 @@ prompt otherwise), exactly like every other mutating command.
 
 diagnose: any fail finding → **1** (the "drift/diagnose-findings" row);
 warns/info/ok never flip it. restart/redeploy: success → 0; failure →
-**3** (the exact retry command is in the message). restore's refusal →
-**3** with code `not-implemented`.
+**3** (the exact retry command is in the message). restore: refusal
+classes → **3** with the typed code; success → 0.
 
 ## Seams (all hermetic; tier-1 testing discipline)
 

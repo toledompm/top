@@ -3,8 +3,10 @@
 The create/verify/prune half of the BackupProvider contract
 (`docs/contracts/backup-recovery.md`; mechanism ADR-0007, scope boundary
 ADR-0013: **TOP backs up TOP** — metadata only, application data is the
-operator's). No CLI lives here: `topctl backup …` verbs are T-503 and wire
-these exact seams (see "Wiring the CLI", below).
+operator's). No CLI lives here: `topctl backup …` verbs are still the
+honest notImpl stubs in `internal/cli/stubs.go` (T-503 wired the
+**recover** side, not the backup CLI — the verb wiring below is a
+pending owner decision, backlog R8).
 
 ## API
 
@@ -92,10 +94,13 @@ Decisions, as shipped:
   clean non-zero exit. Stderr excerpts in errors are bounded and
   FastExec-redacted.
 
-### T-503 composition note
+### T-503 composition note (update: restore landed, backup CLI still pending)
 
-`topctl backup create` (T-503) should flow Create → Copy (non-fatal) →
-Verify, mirroring the controller's scheduled tick. Also relevant to
+What T-503 actually shipped on this package: `Offsite.Pull` (restore-side
+lifeline pull of a `user@host:path` spec) and the CLI wiring of
+`topctl recover restore`. `topctl backup create` remains notImpl — when
+the R8 wiring lands it should flow Create → Copy (non-fatal) → Verify,
+mirroring the controller's scheduled tick. Also relevant to
 restore-from-offsite: with no per-row copied marker, the recover path can
 NOT admission-check "did this backup reach the offsite" from the registry —
 it shouldn't need to either (restore admits by watermark + integrity, not
@@ -145,7 +150,7 @@ are satisfied by the shipped implementations (compile-proofed in tests;
 `internal/store/sqlite` is never imported by the engine itself). Fake
 registry/clock/orderable stubs make everything tier-1 hermetic.
 
-## Wiring the CLI (T-503 handoff)
+## Wiring the CLI (pending owner decision R8; plan unchanged)
 
 ```
 topctl backup list            → store.ListBackups (the registry read; no engine needed)
