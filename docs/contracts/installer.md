@@ -34,10 +34,16 @@ repo = stop with instructions.
 `core-top-controller` from the pinned bootstrap image, with its SQLite
 storage mount. Recorded in the ledger as `bootstrap-owned`.
 
-**5. First reconciliation** — the bootstrapped controller loads the repo,
-adopts its own deployment (same app name; converts ledger entry to
-`managed`), and reconciles `core` then `observability` per ADR-0002. Install
-exits 0 only when `Readiness(core)` is green and the first run is recorded.
+**5. First reconciliation** — the install CLI itself is the composition
+root for this phase (ADR-0005 amendment 2026-11-04): via the
+`Options.FirstRun` seam it loads the repo specs and runs ONE reconciler
+pass, which adopts the bootstrapped controller's own deployment (same app
+name; converts the ledger entry to `managed` via `store.MarkManaged`), and
+reconciles `core` then `observability` per ADR-0002. The adopted controller
+takes over only afterwards; install exits 0 when `Readiness(core)` is green
+and the first run is recorded (provenance keys adopted
+`adoptedByOp`/`firstRunOp`/`firstRunRevision`/`firstRunStatus` live on the
+phase-5 operation record — ADR-0005 amendment 2026-11-04).
 
 **6. Report** — prints: what was created, what was adopted, what was left
 alone, where secrets must still be provisioned, and the next suggested

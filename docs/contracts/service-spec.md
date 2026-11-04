@@ -20,6 +20,18 @@ semantics and rationale.
   a `secretRefs` entry resolved from the host secret store (ADR-0008).
 - **Defaults are explicit in docs**: omitted fields take the defaults below
   and `topctl diff` shows the effective (defaulted) spec.
+- **`spec.args[]` is fingerprint-covered** (approved 2026-11-04, owner
+  verdict R1; implementation pending — T-411): a change limited to
+  `spec.args[]` is a whole-service change in the fingerprint, so the plan
+  emits an update and the container redeploys — like any other spec field,
+  never a silent no-op.
+- **`spec.storage[].readOnly` is fail-safe pre-adapter** (approved
+  2026-11-04, owner verdict R2; implementation pending — T-412): spec
+  parsing/validation accepts it now (fragmenting the contract later is
+  worse); until Dokku exposes a mounted-read-only flag the adapter does not
+  enforce, the apply op record carries a WARN detail documenting the manual
+  `docker-options:add <app> ...:ro` interim (T-403 template-note
+  convention).
 
 ## Field summary (v0)
 
@@ -36,7 +48,8 @@ semantics and rationale.
 | `spec.routing.mode` | enum | `none` | `proxy` (dokku nginx + domains) \| `internal` (container network only) \| `none` |
 | `spec.routing.domains[]` | list | `[]` | required when `proxy` |
 | `spec.healthcheck.http/tcp/exec` | object | — | maps to Dokku checks; absence = Dokku defaults |
-| `spec.storage[]` | list | `[]` | `name`, `mountPath`, `size` (advisory) → dokku storage |
+| `spec.storage[]` | list | `[]` | `name`, `mountPath`, `size` (advisory) → dokku storage; `readOnly` (bool, default `false`) requests a read-only host bind for that entry (R2, 2026-11-04) |
+| `spec.args[]` | list of string | `[]` | extra container entrypoint arguments (e.g. Prometheus retention flags), appended verbatim (R1, 2026-11-04) |
 | `spec.env` | map | `{}` | plain values |
 | `spec.secretRefs[]` | list | `[]` | names resolved via the configured `SecretProvider` (host-file store in v0; Vault-style providers later — ADR-0008) → injected as env |
 | `spec.dependsOn[]` | list | `[]` | intra-namespace ordering hints |

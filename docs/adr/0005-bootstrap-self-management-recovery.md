@@ -108,4 +108,20 @@ That is one documented command; release notes will say so.
 ## Open questions
 
 - Should `--include-controller` still require a typed confirmation on a
-  production-flagged install? Decide in Milestone 3.
+  production-flagged install? Decide in Milestone 3. *(Resolved during M4:
+  yes — the confirm gate applies; `internal/cli` `SelfDeployApproved` +
+  `docs/contracts/cli.md` row, ADR-0009.)*
+
+## Amendment 2026-11-04 (owner verdict R3 — adopted-by-op annotation)
+
+The phase-5 first-reconciliation provenance lives on the **operation
+record**, not the ledger row. The adopting install op record carries the
+details keys `adoptedByOp`, `firstRunOp`, `firstRunRevision`,
+`firstRunStatus` (`internal/install/adopt.go`); the ledger handoff itself
+is `store.MarkManaged(kind, identifier)` — a pure state conversion whose
+`(kind, identifier)` surface leaves no room for annotation columns, which
+is the constraint this settles. `MarkManaged` stays idempotent and
+refuses pre-existing rows (ADR-0009 spirit); re-adoption guards on the
+op-record keys instead. The installer contract's phase-5 wording takes the
+matching composition-root clause (the install CLI runs the first pass via
+`Options.FirstRun`; the adopted controller takes over afterwards).
