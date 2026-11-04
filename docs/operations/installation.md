@@ -128,15 +128,15 @@ per the dry-run integration tests), matching
 | 2 | `2-dokku-setup` | With `--install-dokku`: run the pinned upstream bootstrap after explicit confirmation (or the exact sudo commands as a fallback; ADR-0009). Without it: stop with instructions when Dokku is missing; verify version/health when present (≥ 0.38). |
 | 3 | `3-platform-wiring` | `<dataDir>/{secrets,git,backups}` at 0700, `top-internal` network, provision the deploy key + pinned known_hosts, register the repo and verify resource resolution. |
 | 4 | `4-bootstrap-deploy` | One-time direct Dokku deploy of `core-top-controller` from the pinned bootstrap image, with the `top-metadata` SQLite storage mount; recorded in the ledger as `bootstrap-owned`. |
-| 5 | `5-first-reconcile` | One reconciler pass (the install CLI's `FirstRunner` seam, `internal/install/adopt.go`): validates/loads the spec — including the example/fleet repo — and hands ownership of the deployment over per ADR-0005: the ledger row converts `bootstrap-owned → managed` (`store.MarkManaged`), annotated in the phase-5 op record (`adoptedByOp`/`firstRunOp`; wording amendment pending owner blessing, m4-review.md R3). |
+| 5 | `5-first-reconcile` | One reconciler pass (the install CLI's `FirstRunner` seam, `internal/install/adopt.go`): validates/loads the spec — including the example/fleet repo — and hands ownership of the deployment over per ADR-0005: the ledger row converts `bootstrap-owned → managed` (`store.MarkManaged`), annotated in the phase-5 op record (`adoptedByOp`/`firstRunOp`; owner-blessed 2026-11-04, R3 — installer.md phase 5 + ADR-0005 amendment). |
 | 6 | `6-report` | Prints what was created / adopted / left alone, which secrets still need provisioning, and suggested next commands. |
 
 > **Contract alignment note:** phase 5 (first reconciliation) and phase 6
-> landed in M4 (T-402). One residual wording drift against
-> `docs/contracts/installer.md:37` ("the bootstrapped controller loads
-> the repo" vs the implementation running the phase-5 pass from the
-> install CLI) is exactly m4-review.md §4 **R3** — one owner-blessed
-> sentence; do not re-word it here before the verdict.
+> landed in M4 (T-402). The wording drift against `installer.md` ("the
+> bootstrapped controller loads the repo" vs the composition-root phase-5
+> pass from the install CLI) was m4-review.md §4 **R3** — owner-blessed
+> 2026-11-04; `installer.md` phase 5 now carries the composition-root
+> clause and ADR-0005 carries the op-record provenance amendment.
 
 Resumability: every phase records a store operation (`kind: install`,
 `details.phase`), so re-running `topctl install` (same command, same flags)

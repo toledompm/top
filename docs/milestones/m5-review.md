@@ -51,8 +51,11 @@ Notable corrections made during implementation:
 
 ## What remains before v0 sign-off (T-508)
 
-1. **Owner verdicts** R1–R8 (+ carried: laws-CI required-vs-optional, T-399
+1. **Owner verdicts** R1–R8 (+ carried: T-399
    upkeep candidates `IsErrLockedLease`/`FakeRunner.Reset`/go.mod tidy).
+   Resolved so far 2026-11-04: R1 (spec.args), R2 (storage readOnly),
+   R3 (installer/ADR-0005), R4 (cli.md self-deploy gate), laws-CI
+   REQUIRED — tasks T-411/T-412 queued.
 2. **Live evidence remaining**: one disposable-VM fleet pass for the tier-4
    scripts (`t404`, `t405`, `t504-*`, host procedures in each script header),
    the M4 1h soak closing report (acceptance 7 sign-off precondition), and
