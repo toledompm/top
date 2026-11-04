@@ -48,6 +48,8 @@ type Metrics struct {
 	sqliteOpDuration    *prometheus.HistogramVec
 	backupLastSuccess   prometheus.Gauge
 	backupVerifyResult  prometheus.Gauge
+	backupDuration      prometheus.Histogram
+	backupTotal         *prometheus.CounterVec
 	buildInfo           prometheus.Gauge
 }
 
@@ -123,6 +125,17 @@ func NewMetrics(version, commit string) (*Metrics, error) {
 			Name:      "backup_last_verify_result",
 			Help:      "Outcome of the last backup verification: 1 ok, 0 failed.",
 		}),
+		backupDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "backup_duration_seconds",
+			Help:      "Duration of one backup Create (VACUUM INTO → fsync → registry).",
+			Buckets:   prometheus.ExponentialBucketsRange(0.01, 300, 10),
+		}),
+		backupTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "backup_total",
+			Help:      "Backup Create attempts by outcome.",
+		}, []string{"result"}),
 		buildInfo: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "build_info",
@@ -154,6 +167,8 @@ func NewMetrics(version, commit string) (*Metrics, error) {
 		m.sqliteOpDuration,
 		m.backupLastSuccess,
 		m.backupVerifyResult,
+		m.backupDuration,
+		m.backupTotal,
 		m.buildInfo,
 	} {
 		if err := register(c); err != nil {
@@ -225,6 +240,14 @@ func (m *Metrics) SetBackupVerifyResult(ok bool) {
 		v = 1
 	}
 	m.backupVerifyResult.Set(v)
+}
+
+// RecordBackup records one backup attempt's outcome with its duration.
+// result is the bounded `result` set ("ok"/"error"), never an error string
+// (ADR-0010 cardinality discipline).
+func (m *Metrics) RecordBackup(d time.Duration, result string) {
+	m.backupDuration.Observe(d.Seconds())
+	m.backupTotal.WithLabelValues(result).Inc()
 }
 
 // --- Serving -------------------------------------------------------------

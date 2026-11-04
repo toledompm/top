@@ -39,6 +39,7 @@ func TestMetricsScrape(t *testing.T) {
 	m.ObserveSQLiteOperation("get", 5*time.Millisecond)
 	m.SetBackupSuccessAt(time.Unix(1700000060, 0))
 	m.SetBackupVerifyResult(true)
+	m.RecordBackup(500*time.Millisecond, ResultOK)
 
 	out := scrape(t, m)
 
@@ -57,6 +58,8 @@ func TestMetricsScrape(t *testing.T) {
 		`top_sqlite_operation_duration_seconds_sum{operation="get"}`,
 		`top_backup_last_success_timestamp`,
 		`top_backup_last_verify_result 1`,
+		`top_backup_duration_seconds_sum`,
+		`top_backup_total{result="ok"} 1`,
 	} {
 		if !strings.Contains(out, fragment) {
 			t.Errorf("/metrics missing %q", fragment)

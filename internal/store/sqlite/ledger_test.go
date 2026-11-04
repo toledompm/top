@@ -116,6 +116,27 @@ func TestBackupRegistry(t *testing.T) {
 		got[0].VerifyResult != "integrity: xx (retry)" || got[0].VerifiedAt.IsZero() {
 		t.Fatalf("backup round-trip: %+v", got)
 	}
+
+	// RemoveBackup: the prune-side delete (file removal is the engine's,
+	// the row goes second). Unknown path is ErrNotFound; after removal the
+	// registry lists nothing.
+	if err := st.RemoveBackup(ctx, "/nope"); errOf(err, domain.ErrNotFound) {
+	} else {
+		t.Fatalf("RemoveBackup unknown err = %v, want ErrNotFound", err)
+	}
+	if err := st.RemoveBackup(ctx, b.Path); err != nil || len(got2(t, st)) != 0 {
+		t.Fatalf("RemoveBackup known: err=%v list=%+v", err, got2(t, st))
+	}
+}
+
+// got2 lists the backup registry (helper keeping the test above single-purpose).
+func got2(t *testing.T, st *Store) []*store.Backup {
+	t.Helper()
+	got, err := st.ListBackups(context.Background())
+	if err != nil {
+		t.Fatalf("ListBackups: %v", err)
+	}
+	return got
 }
 
 func TestLeaseAcquireReleaseExpire(t *testing.T) {

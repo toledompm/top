@@ -134,6 +134,21 @@ func (s *Store) RemoveLedgerEntry(ctx context.Context, kind, identifier string) 
 	return nil
 }
 
+// RemoveBackup implements store.Store.RemoveBackup: retention deletes the
+// registry row after the engine has removed the file (prune order:
+// file first, then row — never a row without its file).
+func (s *Store) RemoveBackup(ctx context.Context, path string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM backups WHERE path = ?`, path)
+	if err != nil {
+		return classify(fmt.Sprintf("remove backup %q", path), err, "backup "+path)
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return domain.NewNotFound("backup", path)
+	}
+	return nil
+}
+
 // --- backup registry ------------------------------------------------------
 
 // InsertBackup implements store.Store.InsertBackup.

@@ -20,7 +20,10 @@ Persistence for TOP metadata. One implementation in v0: SQLite
 - **Resource ledger** (ADR-0009): every host resource TOP created
   (`kind`, `identifier`, `labels`, `createdBy operation`).
 - **Backup registry**: backup files, size, watermark (newest operation ID
-  included), verification status/result.
+  included), verification status/result. Registry maintenance verbs:
+  `InsertBackup`, `ListBackups`, `SetBackupVerified`, and (retention/
+  prune, M5) `RemoveBackup` — the engine deletes the file first, then the
+  row, so no row is ever present for a missing file.
 - **Serialization lease**: `leases(name PK, holderID, expiresAt)` for the
   single-writer reconcile lock and for CLI-vs-controller mutual exclusion
   during restore.

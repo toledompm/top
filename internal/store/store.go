@@ -101,6 +101,11 @@ type Store interface {
 	// SetBackupVerified records the verification result and time for one
 	// backup; ErrNotFound when the path is unregistered.
 	SetBackupVerified(ctx context.Context, path, verifyResult string, at time.Time) error
+	// RemoveBackup deletes one registry row after the file itself is
+	// pruned (retention, backup-recovery contract); ErrNotFound when the
+	// path is unregistered. The engine deletes the file FIRST, then the
+	// row, so a registry row is never present for a missing file.
+	RemoveBackup(ctx context.Context, path string) error
 
 	// --- serialization lease ---------------------------------------------------
 
