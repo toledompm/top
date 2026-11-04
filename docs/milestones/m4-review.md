@@ -172,17 +172,24 @@ Owner decisions pending (add these to the decisions table when resolved):
 
 - **R1** — add `spec.args[]` to the ServiceSpec contract (prometheus
   retention flags on the small host; fingerprint-covered so arg-only
-  changes redeploy).
+  changes redeploy). **RESOLVED 2026-11-04: APPROVED** — service-spec.md
+  amended; implementation task T-411 (backlog).
 - **R2** — add `spec.storage[].readOnly` (read-only host binds for
   node-exporter/cAdvisor; also constrains Dokku `storage:mount` to
-  read-only consumers once Dokku grows the flag).
+  read-only consumers once Dokku grows the flag). **RESOLVED
+  2026-11-04: APPROVED** (fail-safe pre-adapter, WARN-op interim) —
+  service-spec.md amended; implementation task T-412 (backlog).
 - **R3** — bless the installer phase-5 wording fix ("bootstrapped
   controller" → composition root clause) + ADR-0005 amendment putting
   `adoptedByOp`/`firstRunOp` on the op record and naming `store.MarkManaged`.
+  **RESOLVED 2026-11-04: APPROVED** — installer.md phase 5 + ADR-0005
+  amendment 2026-11-04 landed.
 - **R4** — bless the `docs/contracts/cli.md` deploy-row amendment (the
-  `core/top-controller` confirm-gated exception).
+  `core/top-controller` confirm-gated exception). **RESOLVED
+  2026-11-04: APPROVED** — cli.md row finalised.
 - Carried from M3: the `make laws` CI job REQUIRED-vs-optional decision
-  (M3 review, T-311).
+  (M3 review, T-311). **RESOLVED 2026-11-04: REQUIRED** — ci.yml laws
+  job is a non-optional gate; ADR-0015 amendment landed.
 - T-399 upkeep candidates still queued: `IsErrLockedLease`,
   `FakeRunner.Reset`, `go.mod tidy`.
 - `topctl secrets` verb backlog (the operator setup step until then is
@@ -190,9 +197,13 @@ Owner decisions pending (add these to the decisions table when resolved):
 - **`topctl status` is still a stub** — M4 acceptance row 4 names it;
   either scope a real drift view into M5 or amend the row to `topctl diff`.
 - Acceptance-script coverage for M4 acceptance 2 (install green per
-  public docs on a clean VM) is currently the soak run itself, not a
-  committed script — decide whether to add a t402-style script or accept
-  the run report as the artifact.
+  public docs on a clean VM): **RESOLVED 2026-11-04 (owner verdict)** —
+  ACCEPT THE RUN REPORT as the artifact; NO t402-style script is
+  committed. Rationale: scripts add no value here — the install-green
+  precondition is exercised live by every t404/t405/t504 fleet run, and
+  the live run report + gate matrix + the instrumented fleet scripts
+  already cover the operational surface; a t402 script would duplicate
+  the precondition without adding evidence.
 
 Risks (from M4 §Risks): small-host OOM from the stack → R1/R2 + resource
 limits are the planned knobs; rollback remains "scale down specs via Git"
@@ -209,8 +220,23 @@ limits are the planned knobs; rollback remains "scale down specs via Git"
    green end-to-end from a clean VM twice in a row) — the repeat run is
    also T-407's own "clean-VM repeat run" deliverable.
 3. Owner verdicts on R1–R4 (+ the carried laws-CI decision), which land
-   as ADR/contract amendments per rule 3.
+   as ADR/contract amendments per rule 3. **DONE 2026-11-04** — R1–R4
+   approved + laws job REQUIRED; amendments in cli.md / service-spec.md /
+   installer.md / ADR-0005 / ADR-0015 / ci.yml; backlog adds
+   T-411/T-412.
 4. Backlog closure: mark T-401..T-407 done after sign-off.
+
+## Status addendum 2026-11-04 (owner verdicts)
+
+- **R1–R4 APPROVED; carried M3 laws-CI decision RESOLVED (the laws job is
+  REQUIRED); M4 acceptance 2 KEEP THE RUN REPORT as the artifact — no
+  t402-style script is committed** (rationale: scripts add no value here;
+  the live run report + gate matrix + the instrumented t404/t405/t504
+  fleet scripts cover the operational surface; install-green is every
+  fleet run's precondition). Contract/ADR/workflow amendments landed
+  2026-11-04; implementation tasks T-411 (`spec.args[]`) and T-412
+  (`spec.storage[].readOnly`) queued in the backlog. R5–R8 and T-399
+  upkeep candidates remain open.
 
 ## Status addendum 2026-11-03 (orchestrator)
 

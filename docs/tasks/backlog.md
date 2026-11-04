@@ -354,16 +354,49 @@ sweep. Nothing is pre-blessed.
 
 | # | Question (one line) | Where the code/contract stands |
 | --- | --- | --- |
-| R1 | Add `spec.args[]` to the ServiceSpec contract (prometheus retention flags; fingerprint-covered redeploy)? | PROPOSED in `internal/install/platformrepo/README.md` §145–156 |
-| R2 | Add `spec.storage[].readOnly` (read-only host binds for node-exporter/cAdvisor)? | PROPOSED, `platformrepo/README.md` §183–191 |
-| R3 | Bless installer.md phase-5 wording fix ("bootstrapped controller loads the repo" → composition-root clause) + ADR-0005 amendment putting `adoptedByOp`/`firstRunOp` on the op record and naming `store.MarkManaged` | Code-true today; contract wording stale (`installer.md:37`) |
-| R4 | Bless the cli.md deploy-row amendment (the `core/top-controller` confirm-gated exception) | Amended in `docs/contracts/cli.md` 2026-11-03, verdict pending |
+| R1 | Add `spec.args[]` to the ServiceSpec contract (prometheus retention flags; fingerprint-covered redeploy)? | **RESOLVED 2026-11-04: APPROVED** — service-spec.md amended; implementation = T-411 |
+| R2 | Add `spec.storage[].readOnly` (read-only host binds for node-exporter/cAdvisor)? | **RESOLVED 2026-11-04: APPROVED** (fail-safe pre-adapter; WARN-op interim) — service-spec.md amended; implementation = T-412 |
+| R3 | Bless installer.md phase-5 wording fix ("bootstrapped controller loads the repo" → composition-root clause) + ADR-0005 amendment putting `adoptedByOp`/`firstRunOp` on the op record and naming `store.MarkManaged` | **RESOLVED 2026-11-04: APPROVED** — installer.md phase 5 + ADR-0005 amendment 2026-11-04 |
+| R4 | Bless the cli.md deploy-row amendment (the `core/top-controller` confirm-gated exception) | **RESOLVED 2026-11-04: APPROVED** — cli.md row finalised |
 | R5 | Controller scheduled backups: wire a daily-jobs seam into `internal/controller`, or accept caller-invoked-only v0 (`topctl backup` once R8 lands; manual/cron thereafter)? | Engine is caller-invoked; controller has NO backup calls today; contract's scheduling section is PROPOSAL (`backup-recovery.md:32–40`) |
 | R6 | Offsite: keep rsync-SSH (rclone config-known-but-unwired), and amend the store for the per-row marker `store.Backup.CopiedOffsiteAt` + `SetBackupCopiedOffsite` (goose migration)? | rsync-SSH shipped; metrics-only alarm surface; marker PROPOSED (`backup-recovery.md` §Offsite) |
 | R7 | Restore mechanics: bless (a) no operation record is inserted after a restore, (b) admission by file watermark+integrity (never registry copy-history), (c) safety snapshot as a real registered backup under `<backups>/safety/` | Code-true (`internal/recover/restore.go`); documented PROPOSAL (`backup-recovery.md` §Restore mechanics) |
 | R8 | Backup CLI verb wiring (`backup create/list/verify`/`prune`): land before v0 tag (T-507 slot) or post-v0? Today the verbs are notImpl stubs while the engine ships | Engine + README wiring plan verbatim (`internal/backup/README.md` §Wiring the CLI); t504-disk-pressure's scripted ENOSPC phase waits on it |
 
-Carried from M3/M4 (unchanged): the `make laws` CI REQUIRED-vs-optional
-decision; T-399 upkeep candidates; the `topctl secrets` verb backlog;
-`topctl status` real drift view (or amend M4 acceptance 4 to `topctl
-diff`); acceptance-2 script-vs-run-report artifact decision.
+Carried from M3/M4 (unchanged): T-399 upkeep candidates; the
+`topctl secrets` verb backlog; `topctl status` real drift view (or amend
+M4 acceptance 4 to `topctl diff`); the `topctl secrets` verb backlog;
+~~the `make laws` CI REQUIRED-vs-optional decision~~ **resolved
+2026-11-04 — REQUIRED** (`.github/workflows/ci.yml`, ADR-0015 amendment);
+~~acceptance-2 script-vs-run-report artifact decision~~ **resolved
+2026-11-04 — the run report is the artifact** (m4-review.md §4).
+
+## Owner-verdict implementation tasks (approved 2026-11-04, not yet built)
+
+- **T-411 `spec.args[]` (R1).** Make the newly blessed ServiceSpec field
+  real: `internal/spec` parse + strict validation (repeated
+  `args: []string`, default `[]`, entries must be strings, KnownFields
+  stays strict); `internal/plan` fingerprint/diff so an arg-only spec
+  change fingerprints as a whole-service change and emits an update row
+  (redeploy — never a silent no-op); backend adapter wiring so the args
+  reach the container entrypoint on apply (image and build service paths
+  alike); `internal/domain` vocabulary + `internal/install/platformrepo`
+  template specs + README learn the field. Deps: T-103, T-110, T-305.
+  AC: arg-only change redeploys exactly once, next plan is empty
+  (idempotency rule), contract examples + fixture specs stay valid,
+  fingerprint golden covers args-vs-env distinction. Tests: tier 1
+  (+ tier 3 apply row). Refs: service-spec.md (R1 rows/rules),
+  platformrepo/README.md §145–156. Risk: low. Agent: core-go.
+- **T-412 `spec.storage[].readOnly` (R2).** Same treatment for the
+  read-only bind field: `internal/spec` parse + validate (bool, default
+  `false`); `internal/plan` diff rows for it; adapter wiring is
+  **two-phase by design**: when Dokku gains a mounted-read-only flag, use
+  it on apply; until then spec validation PERMITS `readOnly: true`
+  (fail-safe — not a parse error) and the adapter emits a WARN op detail
+  documenting the manual `docker-options:add <app> ...:ro` interim (the
+  T-403 template-note convention), keeping node-exporter/cAdvisor metric
+  jobs PROVISIONAL (README §183–191). Deps: T-103, T-110, T-305.
+  AC: diff shows readOnly changes; `readOnly: true` spec validates +
+  applies with the WARN detail on the op record; no behavior change when
+  false/absent. Tests: tier 1. Refs: service-spec.md (R2 rows/rules),
+  platformrepo/README.md §183–191. Risk: low. Agent: core-go.
