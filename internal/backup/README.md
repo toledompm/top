@@ -35,8 +35,85 @@ Metrics (obs seam, ADR-0010): `top_backup_last_success_timestamp` /
 `top_backup_last_verify_result` (existing M2-era gauges — now wired for
 real) plus `top_backup_duration_seconds` / `top_backup_total{result}`.
 
-## Retention algorithm (documented contract; boundary-tested exactly)
+## Offsite copy — `Offsite.Copy` (M5, T-502)
 
+Composes against `Engine.Create`'s returned `*store.Backup` (path, size,
+watermark): ONE rsync invocation syncing ONE FILE to the offsite target —
+never dir-sync semantics.
+
+```go
+copier := &backup.Offsite{                 // wired from config.Backup.Offsite
+    Target:         cfg.Backup.Offsite.Target,        // "user@host:path" (rsync remote syntax)
+    ExtraArgs:      cfg.Backup.Offsite.Options,       // whitelist-checked (below)
+    Port:           cfg.Backup.Offsite.Port,          // 0 = ssh default; inside the -e command
+    TimeoutSeconds: cfg.Backup.Offsite.TimeoutSeconds, // 0 = DefaultOffsiteConnectTimeoutSeconds (15)
+    Runner:         execRunner,                       // the exec.Runner seam (rsync resolve on PATH)
+    Recorder:       metrics,   // *obs.Metrics or nil (OffsiteRecorder seam)
+    Log:            logger,    // *slog.Logger or nil
+    Now:            clockOrNil,
+}
+err := copier.Copy(ctx, backup) // MUST be treated as non-fatal by callers
+```
+
+Decisions, as shipped:
+
+- **Mechanism: rsync over SSH, not rclone** (the ADR-0007 open question,
+  resolved in the implementation, smallest contract-fitting option; the
+  backlog names rsync/SSH as the instrument; no new dependency). Config
+  still accepts `kind: rclone` but the wiring (T-503 CLI) must build
+  `Offsite` only for `rsync-ssh`; rclone fails at resolution time like the
+  v0 vault posture (ADR-0008 pattern).
+- **Alarm, not failure.** `Copy` returns the rsync error and the caller
+  logs-and-continues: the local backup was created and registered FIRST
+  (CopyOffsite contract: "failure alarms but must NOT fail the local
+  backup"). Copy never touches the registry, never mutates or deletes the
+  local file, never panics on destination-down.
+- **Alarm surface = metrics, no registry marker in v0.** The store surface
+  is frozen for T-502, so copied-state is process-level:
+  `top_backup_offsite_last_success_timestamp` (0 until first success —
+  "no fresh timestamp" IS the alertable condition, ADR-0007 stale-backup
+  style) and `top_backup_offsite_total{result=ok|error}`. No op-record is
+  inserted (same evidence rule as Create: nothing inserted silently).
+  **Open seam for the M5 review:** a per-row marker needs a store
+  amendment — proposed there as `store.Backup.CopiedOffsiteAt time.Time`
+  + `SetBackupCopiedOffsite(path, at)` with a goose migration,
+  same-change-family as RemoveBackup (T-501). Until then, "which backup
+  files are offsite-copied" is not answerable from the registry.
+- **Restricted flag whitelist** (no hairy rsync subtleties): extra
+  `Options` are rejected unless each is exactly one value-less flag of
+  `-a/--archive`, `-z/--compress`, `-c/--checksum`, `-W/--whole-file`;
+  `-e`, transport flags, `--delete`, value-taking flags are refused
+  pre-exec. The default argv needs no flags for a single file.
+- **Security:** rsync runs only through `exec.Runner` (argv slices; no
+  shell, so config values are never interpolated). Authentication is
+  SSH's own (`ssh -o BatchMode=yes -o ConnectTimeout=N [-p P]` as the `-e`
+  value); no key/password is ever stored, passed, or logged by this
+  package — a hung password prompt is impossible; destination-down is a
+  clean non-zero exit. Stderr excerpts in errors are bounded and
+  FastExec-redacted.
+
+### T-503 composition note
+
+`topctl backup create` (T-503) should flow Create → Copy (non-fatal) →
+Verify, mirroring the controller's scheduled tick. Also relevant to
+restore-from-offsite: with no per-row copied marker, the recover path can
+NOT admission-check "did this backup reach the offsite" from the registry —
+it shouldn't need to either (restore admits by watermark + integrity, not
+by copy history); the offsite file is an extra lifeline, usable manually
+with `rsync -e ssh offsite:path/top.db /tmp` when the local dir is gone.
+
+### Tier-3 ssh-container test shape (for T-504 — specced, not run here)
+
+Script under `test/e2e` (disposable container, never the author's host):
+start an sshd container with a keypair mounted; `rsync` a real
+`Engine.Create` backup via a real `exec.FastExec` to
+`backup@localhost:<port>:...`; assert the remote file exists and its
+sha256 equals the local one; then "destination-down" variant (unresolvable
+hostport) asserts exit != 0, local file intact, exit-code classification
+clean. Env-gated (e.g. `TOP_TEST_OFFSITE_SSH=1`) like the other
+real-host-coupled tests.
+
+## Retention algorithm (documented contract; boundary-tested exactly)
 1. Daily pass, newest→oldest: first-seen (newest) backup per distinct UTC
    day; the newest `KeepDaily` days survive.
 2. Weekly pass over the *remainder*: first-seen per distinct ISO week; the
