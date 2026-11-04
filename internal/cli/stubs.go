@@ -358,7 +358,7 @@ func newReconcileCmd(c *cctx) *cobra.Command {
 	cmd.Flags().Bool("now", false, "reconcile immediately instead of honoring locks/backoff (accepted; the CLI run is always immediate — backoff is the controller loop's, T-310)")
 	cmd.Flags().String("service", "", "reconcile a single service (\"ns/name\"; bare \"name\" = default/name)")
 	cmd.Flags().Bool("prune", false, "delete services observed but absent from the spec (confirm-gated, ADR-0009 consent pair)")
-	cmd.Flags().Bool("include-controller", false, "include TOP's own controller in the reconcile (confirm-gated, ADR-0005; report-only until the M4 adopt path)")
+	cmd.Flags().Bool("include-controller", false, "include TOP's own controller in the reconcile (confirm-gated, ADR-0005; adopted-self revision drift stays human-gated — T-402/M4)")
 	return cmd
 }
 
