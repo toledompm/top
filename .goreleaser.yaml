@@ -65,5 +65,5 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - "^docs\\\\(" # commit bodies are curated; CHANGELOG.md is human-owned
+      - "^docs[:(]" # commit bodies are curated; CHANGELOG.md is human-owned
       - "^test:"
