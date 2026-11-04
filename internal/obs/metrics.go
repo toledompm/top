@@ -50,7 +50,12 @@ type Metrics struct {
 	backupVerifyResult  prometheus.Gauge
 	backupDuration      prometheus.Histogram
 	backupTotal         *prometheus.CounterVec
-	buildInfo           prometheus.Gauge
+	// T-502 offsite-copy metrics (surgical addition; see
+	// internal/backup/offsite.go for the alarm semantics — "no fresh
+	// timestamp" is the destination-down alarm condition).
+	backupOffsiteLastSuccess prometheus.Gauge
+	backupOffsiteTotal       *prometheus.CounterVec
+	buildInfo                prometheus.Gauge
 }
 
 // NewMetrics builds the full ADR-0010 set, registering every collector and
@@ -136,6 +141,16 @@ func NewMetrics(version, commit string) (*Metrics, error) {
 			Name:      "backup_total",
 			Help:      "Backup Create attempts by outcome.",
 		}, []string{"result"}),
+		backupOffsiteLastSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "backup_offsite_last_success_timestamp",
+			Help:      "Unix timestamp of the last successful offsite backup copy (0 = never; absent freshness is the alarm, ADR-0007 style).",
+		}),
+		backupOffsiteTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "backup_offsite_total",
+			Help:      "Offsite copy attempts by outcome (rsync/SSH, T-502).",
+		}, []string{"result"}),
 		buildInfo: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "build_info",
@@ -169,6 +184,8 @@ func NewMetrics(version, commit string) (*Metrics, error) {
 		m.backupVerifyResult,
 		m.backupDuration,
 		m.backupTotal,
+		m.backupOffsiteLastSuccess,
+		m.backupOffsiteTotal,
 		m.buildInfo,
 	} {
 		if err := register(c); err != nil {
@@ -248,6 +265,19 @@ func (m *Metrics) SetBackupVerifyResult(ok bool) {
 func (m *Metrics) RecordBackup(d time.Duration, result string) {
 	m.backupDuration.Observe(d.Seconds())
 	m.backupTotal.WithLabelValues(result).Inc()
+}
+
+// SetBackupOffsiteSuccessAt stamps the last successful OFFSITE copy
+// timestamp (T-502); stay 0 until the first success.
+func (m *Metrics) SetBackupOffsiteSuccessAt(t time.Time) {
+	m.backupOffsiteLastSuccess.Set(float64(t.Unix()))
+}
+
+// RecordBackupOffsite records one offsite copy attempt's outcome.
+// result is the bounded `result` set ("ok"/"error"), never an error string
+// (ADR-0010 cardinality discipline).
+func (m *Metrics) RecordBackupOffsite(d time.Duration, result string) {
+	m.backupOffsiteTotal.WithLabelValues(result).Inc()
 }
 
 // --- Serving -------------------------------------------------------------

@@ -33,7 +33,9 @@ var ReservedNamespaces = []string{"core", "observability"}
 var NamespacePolicyOrder = []string{"core", "observability", "default"}
 
 // OffsiteBackupKind enumerates the supported off-site copy mechanisms.
-// Parsed and validated in v0; executed in Milestone 5 (ADR-0007/0013).
+// rsync-ssh is executed in v0 (T-502); rclone is known-but-unimplemented
+// and fails at resolution time (ADR-0007).
+
 type OffsiteBackupKind string
 
 const (
@@ -95,11 +97,26 @@ type BackupConfig struct {
 	Offsite         OffsiteConfig `yaml:"offsite" json:"offsite"`
 }
 
-// OffsiteConfig describes the optional off-host copy target.
+// OffsiteConfig describes the optional off-host copy target (T-502:
+// parsed, validated, and executed v0 for rsync-ssh; rclone stays
+// known-but-unimplemented and fails at resolution — ADR-0007/0013).
 type OffsiteConfig struct {
 	Enabled bool              `yaml:"enabled" json:"enabled"`
 	Kind    OffsiteBackupKind `yaml:"kind" json:"kind"`
-	Target  string            `yaml:"target" json:"target"`
+	// Target is the destination spec. rsync-ssh: exactly
+	// "<user>@<host>:<path>" (no IPv6 literal, no whitespace in v0).
+	Target string `yaml:"target" json:"target"`
+	// Options are extra rsync flags; only a small value-less whitelist is
+	// accepted (-a/-z/-c/-W), enforced at execution time by
+	// internal/backup's copier (never translated blindly to rsync
+	// behavior).
+	Options []string `yaml:"options" json:"options"`
+	// Port is the SSH port (0 = ssh default).
+	Port int `yaml:"port" json:"port"`
+	// TimeoutSeconds bounds SSH connection establishment (0 = the copier's
+	// default, internal/backup.DefaultOffsiteConnectTimeoutSeconds). Total
+	// copy time is bound by the invoking job's context, not here.
+	TimeoutSeconds int `yaml:"timeoutSeconds" json:"timeoutSeconds"`
 }
 
 // SecretsProviderConfig selects the secret provider implementation.
@@ -318,6 +335,17 @@ func Validate(cfg Config) error {
 		}
 		if strings.TrimSpace(cfg.Backup.Offsite.Target) == "" {
 			add("backup.offsite.target", "required when offsite enabled")
+		}
+		if cfg.Backup.Offsite.Port < 0 || cfg.Backup.Offsite.Port > 65535 {
+			add("backup.offsite.port", "want 1-65535 (0 = default), got %d", cfg.Backup.Offsite.Port)
+		}
+		if cfg.Backup.Offsite.TimeoutSeconds < 0 {
+			add("backup.offsite.timeoutSeconds", "want >= 0 (0 = default), got %d", cfg.Backup.Offsite.TimeoutSeconds)
+		}
+		for _, opt := range cfg.Backup.Offsite.Options {
+			if strings.ContainsAny(opt, " \t\n\r") {
+				add("backup.offsite.options", "flag %q must be a single atom (argv-only, no shell strings)", opt)
+			}
 		}
 	}
 
