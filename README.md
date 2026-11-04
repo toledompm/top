@@ -4,14 +4,20 @@
 Declare your workloads in Git; TOP keeps a single-node Dokku host converged to
 that desired state — like Flux, but for a Dokku box instead of Kubernetes.
 
-> **Status: Milestone 1 (foundation) — in progress.** The Go module
-> (`github.com/toledompm/top`, go 1.24), the `topctl` CLI command tree
-> (validated stubs), and the spec/plan/store/exec/secrets/obs foundation
-> packages exist and are CI-verified; docs live in
-> [`docs/adr/`](docs/adr/README.md) +
-> [`docs/contracts/`](docs/contracts/README.md).
-> Unit (tier-1), fake-exec, and contract-conformance test seams are green;
-> the tier-3 real-Dokku harness lands in M2. License: **MIT** (`LICENSE`).
+> **Status: v0-feature complete (M5); pre-tag.** Implemented across
+> M1–M5: the `topctl` CLI, the spec/plan/store/exec/secrets/obs
+> foundation, install/uninstall, the GitOps controller (webhook + poll
+> convergence, drift healing, adoption handoff), TOP's own core +
+> Prometheus/Grafana observability as reconciled specs, the independent
+> recovery path (including real `recover restore` with the ADR-0007
+> safeguard order), and the backup engine with rsync/SSH offsite copy
+> and failure-injection coverage (`test/e2e/t504-*.sh`). Before the v0
+> tag: owner verdicts R1–R8 + live-run sign-offs
+> ([backlog](docs/tasks/backlog.md)), release engineering T-507
+> (versioned binaries, checksums, `install-top.sh` pinning). One honest
+> gap: `topctl backup create/list/verify` are still notImpl stubs (R8);
+> the engine is real and `recover restore` is real. License: **MIT**
+> (`LICENSE`).
 
 ## What it does
 
@@ -45,15 +51,19 @@ that desired state — like Flux, but for a Dokku box instead of Kubernetes.
 | Implementation backlog | [`docs/tasks/backlog.md`](docs/tasks/backlog.md) |
 | Agent/contributor conventions | [`AGENTS.md`](AGENTS.md) |
 
-## Quick start (target experience — not yet implemented)
+## Quick start
 
 ```bash
 ./install-top.sh github.com/example/my-platform-repo
 ```
 
-Prerequisites: a dedicated Linux host (or VM) with a supported Docker +
-Dokku baseline, and a Git repository of ServiceSpecs. See
-[`docs/operations/installation.md`](docs/operations/installation.md).
+`install-top.sh` only locates a `topctl` binary (PATH → pinned release →
+`go build`) and forwards everything to `topctl install`, which preflights,
+plans, and approval-gates each phase; the installer still needs a
+`--deploy-key` + `--known-hosts` pair. Prerequisites and the phase
+walkthrough: [`docs/operations/installation.md`](docs/operations/installation.md).
+`topctl dev` variant: on macOS, only the development tier runs (doctor
+warns, never installs).
 
 ## Contributing
 
