@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: MIT
+# .goreleaser.yaml — TOP release engineering (T-507).
+#
+# Invoked WITHOUT adding a dependency to go.mod:
+#
+#   go run github.com/goreleaser/goreleaser/v2@v2.19.0 check     # validate
+#   go run github.com/goreleaser/goreleaser/v2@v2.19.0 --snapshot --clean
+#   go run github.com/goreleaser/goreleaser/v2@v2.19.0 release    # owner only
+#
+# Pin: v2.19.0 — the latest stable v2 tag as of 2026-11-03 (v2.20.x exists
+# only as `*-nightly` tags). Re-pin deliberately.
+#
+# Naming: raw per-platform binaries `topctl-<os>-<arch>` + one checksums.txt
+# per release. This is the vocabulary install-top.sh already fetches
+# (`topctl-$os-$arch` plus `checksums.txt` for pins — see install-top.sh).
+# NOTE: ADR-0002's `TOP_ARCHIVE_SHA256` is the ADAPTER'S synthesized app.json
+# archive env key — an unrelated "archive". Release artifacts are not that
+# archive; there is no published artifact-name canon in ADR-0002 (it is
+# reconciliation canon).
+#
+# Platforms: Linux arm64+amd64 only — TOP targets Debian 11+ hosts
+# (docs/operations/installation.md); macOS is a development-only tier and is
+# excluded from releases.
+#
+# No docker/image publishing: TOP steers SERVICE images at Dokku
+# (`git:from-image` / `git:sync`), not at a container registry; topctl is a
+# single binary installed on the host. Keep release = binaries + checksums.
+version: 2
+
+project_name: top
+
+builds:
+  - id: topctl
+    main: ./cmd/topctl
+    binary: topctl
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      # Injects the build stamp; identical string feeds top_build_info
+      # (internal/obs) so `topctl version` and the metric agree.
+      - -s -w
+      - -X main.version={{ .Version }}
+
+archives:
+  - id: raw
+    # Ship raw binaries (no tar.gz/zip) named topctl-<os>-<arch>; checksums
+    # are one top-level checksums.txt (the pin vocabulary install-top.sh uses).
+    formats: [binary]
+    name_template: topctl-{{ .Os }}-{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs\\\\(" # commit bodies are curated; CHANGELOG.md is human-owned
+      - "^test:"
