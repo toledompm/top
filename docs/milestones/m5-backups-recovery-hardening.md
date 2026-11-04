@@ -1,5 +1,23 @@
 # Milestone 5 — Backups, recovery, and operational hardening
 
+> ## M5 record (T-506, 2026-11-03, **pre-owner sign-off**)
+>
+> Code landed (backlog §Milestone-5, all tiers-1..4 as marked):
+> T-501 backup engine (`98ac1f7`, `d1af6f0` — create/verify/prune +
+> registry + metrics), T-502 offsite (`58405d3`, `2905fcd` — rsync/SSH
+> copy, alarm-not-fail), T-503 recover suite (`7e7dead`,
+> `7d45808` — `Offsite.Pull` + restore with the verbatim ADR-0007
+> safeguard order + CLI wiring), T-504 failure-injection pack
+> (`8484589`..`939e588` — kill-mid-deploy, wedged DB, disk pressure,
+> reboot; tier-4 scripts + hermetic shards). T-505 (fresh-eyes run) and
+> T-507 (release engineering) follow T-506. **Status: docs-complete
+> sweep executed; owner verdicts R1–R8 (consolidated in the backlog)
+> and live-run evidence pending — nothing here is a claim that AC rows
+> are green against a real VM.** Known doc-accurate gaps at this
+> snapshot: `topctl backup` verbs are notImpl stubs (R8 wiring);
+> controller has no scheduled-backup jobs seam (R5); offsite per-row
+> registry marker is a proposal (R6); restore mechanics proposals R7.
+
 ## Objective & scope
 
 Make the platform survivable and the operations boring: automated verified
