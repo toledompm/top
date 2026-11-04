@@ -1,0 +1,35 @@
+# T-507: release dry-run gate. Runs ONLY on version tags (and manual). This
+# job PUBLISHES NOTHING and needs NO secrets (fork-safe per ADR-0012/0014):
+# it proves the release recipe produces every artifact + checksums.txt from
+# a clean checkout. The owner's real release procedure is documented in
+# commands/release.md.
+name: release-dry
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-dry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # goreleaser needs tags/changelog history
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: goreleaser check
+        run: go run github.com/goreleaser/goreleaser/v2@v2.19.0 check
+      - name: goreleaser snapshot (dry)
+        run: make release-dry-run
+      - name: ship binary smoke test
+        run: |
+          bin=dist/topctl_linux_amd64_v1/topctl
+          "$bin" version -o json
+          grep -q "topctl-linux-amd64" dist/checksums.txt

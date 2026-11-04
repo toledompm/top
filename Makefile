@@ -16,8 +16,11 @@ help:
 	@echo "  make lint            golangci-lint run (skips if not installed)"
 	@echo "  make laws            bend law gate: LAWS/PROOF check + bridge differential"
 	@echo "  make hygiene         ADR-0014 public/private grep"
+	@echo "  make release-check   validate .goreleaser.yaml (go run goreleaser v2, pinned)"
+	@echo "  make release-dry-run snapshot build of ALL release artifacts + checksums (secrets-free)"
+	@echo "  make release         OWNER-ONLY actual publish (needs GITHUB_TOKEN; see commands/release.md)"
 
-.PHONY: build test test-conformance vet fmt lint hygiene test-shim test-e2e-backend laws clean help
+.PHONY: build test test-conformance vet fmt lint hygiene test-shim test-e2e-backend laws clean release-check release-dry-run release help
 
 build:
 	CGO_ENABLED=0 $(GO) build -o $(BINARY) ./cmd/topctl
@@ -73,3 +76,32 @@ laws:
 
 clean:
 	rm -f $(BINARY)
+
+# T-507 release engineering (.goreleaser.yaml). Tool is pinned by TAG and is
+# invoked via `go run ...@tag`, never added to go.mod (no new deps). The pin
+# (v2.19.0, latest stable v2 line as of 2026-11-03) is stated in the config
+# header and commands/release.md — re-pin deliberately in BOTH places.
+# NOTE: goreleaser v2.19.0 requires go >= 1.27.3 — `go run` auto-switches
+# toolchains, so do NOT force GOTOOLCHAIN=local here (commands/release.md).
+# Its `check` subcommand also wants an `origin` git remote (scm
+# introspection); the real gate ships as CI's release-dry job.
+RELEASE_TOOL := github.com/goreleaser/goreleaser/v2@v2.19.0
+
+release-check:
+	@git remote get-url origin >/dev/null 2>&1 || { \
+		echo "no 'origin' remote; goreleaser check needs one (CI's release-dry job runs the real gate)"; exit 0; }
+	$(GO) run $(RELEASE_TOOL) check
+
+# Dry run: snapshot build of the FULL artifact matrix from a clean state
+# (--snapshot --clean) — proves the release recipe compiles and produces
+# every binary + checksums.txt WITHOUT secrets and WITHOUT publishing. Owner
+# release procedure lives in commands/release.md.
+release-dry-run:
+	@[ -d "test/fakeexec" ] # crude repo-root sanity check
+	$(GO) run $(RELEASE_TOOL) --snapshot --clean
+
+# OWNER-ONLY: real publish. Explicitly requires a token in the environment;
+# never run in CI. Confirm twice — this pushes artifacts + a GitHub release.
+release:
+	@test -n "$$GITHUB_TOKEN" || { echo "release: GITHUB_TOKEN not set — refusing (see commands/release.md for the owner flow)"; exit 2; }
+	$(GO) run $(RELEASE_TOOL) release --clean

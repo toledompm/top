@@ -46,11 +46,11 @@ builds:
       - -s -w
       - -X main.version={{ .Version }}
 
+# No plain tar.gz/zip: the `formats: [binary]` archive below ships each build
+# RAW as `topctl-<os>-<arch>` — the vocabulary install-top.sh already fetches
+# (`topctl-$os-$arch` plus `checksums.txt` for pins).
 archives:
-  - id: raw
-    # Ship raw binaries (no tar.gz/zip) named topctl-<os>-<arch>; checksums
-    # are one top-level checksums.txt (the pin vocabulary install-top.sh uses).
-    formats: [binary]
+  - formats: [binary]
     name_template: topctl-{{ .Os }}-{{ .Arch }}
 
 checksum:
