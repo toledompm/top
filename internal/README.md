@@ -20,13 +20,14 @@ its own README with its exported API and invariants — start there.
 | `obs/` | slog JSON + correlation, Prometheus metrics vs ADR-0010's run (private registry). | ADR-0010 |
 | `cli/` | The full `topctl` command tree as validated stubs: flags, envelopes, exit codes, confirm gates. | cli.md, ADR-0009/0011 |
 
-## Not present yet (by plan)
+## Later milestones (by plan)
 
 | Package | Lands | Contract |
 | --- | --- | --- |
 | `backend/` + `backend/dokku/` | M2 (read slice) + M3 (Apply/Readiness) | platform-backend.md, ADR-0001 |
 | `install/` | M2 | installer.md, ADR-0005/0009 |
-| `recover/`, `backup/` | M5 | backup-recovery.md, ADR-0005/0007 |
+| `recover/` | M5 (skeleton landing M2 slice: diagnose/restart actions) | backup-recovery.md, ADR-0005/0007 |
+| `backup/` | M5 (engine landed: create/verify/prune + registry + metrics; scheduling stays caller-invoked until the controller has a jobs seam) | backup-recovery.md, ADR-0007/0013 |
 | `gitsource/`, `webhook/`, `controller/`, `reconcile/` | M3 (loops wired M3/M4) | git-source.md, reconciler.md, ADR-0003/0010 |
 
 Outside `internal/`: `cmd/topctl` (thin main), `conformance_check/`
