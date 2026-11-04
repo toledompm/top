@@ -31,7 +31,7 @@ Task → commits (backlog §Milestone-4):
 | `go build ./...` | GREEN | run 2026-11-03, no output |
 | `go vet ./...` | GREEN | run 2026-11-03, no output |
 | gofumpt | GREEN (0 unformatted files) | `gofumpt -l .` empty, 2026-11-03 |
-| golangci-lint | CI-gated — **not run locally** (binary not installed on this host; `make lint` skips by design) | `.github/workflows/ci.yml:41` runs `golangci-lint-action@v7` — see "could not verify" note below |
+| golangci-lint | **Run locally 2026-11-03**: `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run` — 0 issues | `.github/workflows/ci.yml:41` runs `golangci-lint-action@v7` redundantly; correction to this packet's original note, which cited `make lint` (it skips when the CI-style tool invocation isn't found) |
 | `go test ./... -race -count=1` | GREEN — 21 test packages ok, 0 FAIL/SKIP, **427 top-level test functions** (647 RUN blocks incl. subtests) | run 2026-11-03, `-count=1` |
 | `make laws` | Go differential bridge GREEN (`./test/bridge` 7/7); Bend proof gate **graceful-skipped here** (`bend` not installed on this host — the Makefile's documented default) | run 2026-11-03 |
 | ADR-0014 hygiene | GREEN | `./test/hygiene.sh` passed 2026-11-03 |
@@ -211,3 +211,17 @@ limits are the planned knobs; rollback remains "scale down specs via Git"
 3. Owner verdicts on R1–R4 (+ the carried laws-CI decision), which land
    as ADR/contract amendments per rule 3.
 4. Backlog closure: mark T-401..T-407 done after sign-off.
+
+## Status addendum 2026-11-03 (orchestrator)
+
+- **Live fleet units 1–4 ran GREEN** (tier-3 8/8 + mutable-tag hook, install/
+  adoption invariant, `t404` webhook+poll, `t405` survival) in the disposable
+  environment, with small adapter fixes committed per unit (see git log +
+  commit `6d487a3`+ successors). Soak (unit 5) was still running when fleet
+  work continued to M5 — **its closing report is a sign-off precondition for
+  acceptance 7, not a code blocker**.
+- The `t404` `diff clean` caveat persists by design: M3 secret-checksum gap
+  + the `drifted(self)` human gate (already in §4).
+- M4 status: **code complete; soak evidence + R1–R4 owner verdicts pending.**
+  M5 (T-501..) opened 2026-11-03 per owner direction; M5 work shares the
+  disposable-environment budget, not the sign-off gate.
