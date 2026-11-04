@@ -108,3 +108,48 @@ owner sign-off during the M5 review task.
    step against `Engine.Create`'s returned `store.Backup` — path, size,
    watermark — and records failures on the same metrics without failing
    the local backup).
+
+## Offsite copy (M5, T-502 — status: PROPOSAL, not yet a blessing)
+
+What actually shipped (`internal/backup/offsite.go`, README-documented):
+
+1. **Mechanism resolved: rsync over SSH** (the ADR-0007 open question,
+   resolved in the implementation as the smallest contract-fitting
+   option). ONE rsync invocation syncing ONE FILE (`Offsite.Copy`) —
+   never dir-sync semantics. `kind: rclone` stays config-known but
+   unwired (fails at resolution like the vault posture; owner decision
+   R6 keeps or flips it).
+2. **Alarm, not failure**: the caller logs-and-continues — the local
+   backup is created and registered first; Copy never touches the
+   registry or the local file.
+3. **Alarm surface is process-level metrics** (no registry marker in
+   v0): `top_backup_offsite_last_success_timestamp` +
+   `top_backup_offsite_total{result=ok|error}`. The per-row marker —
+   `store.Backup.CopiedOffsiteAt` + `SetBackupCopiedOffsite` + a goose
+   migration — is a proposed store amendment (**owner decision R6**,
+   same change family as T-501's `RemoveBackup`). Until then, "which
+   backup files are offsite-copied" is not answerable from the registry.
+4. **Restricted extra-args whitelist**: config `Options` must be
+   value-free flags of `-a/--archive`, `-z/--compress`, `-c/--checksum`,
+   `-W/--whole-file`; transport flags and `--delete` are refused
+   pre-exec. rsync runs only via the `exec.Runner` argv seam (no shell,
+   no key/password ever handled).
+
+## Restore mechanics (T-503 — status: PROPOSAL, not yet a blessing)
+
+The restore path that shipped (`internal/recover/restore.go`, wired
+behind `topctl recover restore`) makes three v0 proposals beyond the
+verbatim safeguard order above; bless or amend them in the same owner
+pass (**owner decision R7**):
+
+1. **No operation record is inserted after a restore** — the restored
+   DB's watermark equals the backup's exactly (inserting one would make
+   the restored store self-referentially newer than its own backup).
+2. **Admission is by the FILE, never by registry copy-history**: a
+   backup is admitted on watermark + integrity of the file itself, so
+   an offsite-only file (`user@host:path`, pulled via
+   `backup.Offsite.Pull` before admission) restores even with zero
+   local registry rows.
+3. **Safety snapshot is a real registered backup** under
+   `<dataDir>/backups/safety/` — it MUST succeed before anything
+   replaces the live file; a failure aborts with the live DB untouched.
