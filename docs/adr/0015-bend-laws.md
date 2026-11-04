@@ -1,7 +1,7 @@
 # 0015 — Bend laws: formal invariants for the pure core (PROTOTYPE)
 
 - Status: **accepted** (2026-10-27, owner approval; open questions resolved)
-- Date: 2026-10-27
+- Date: 2026-10-27; amended 2026-11-04 (owner verdict: laws CI job REQUIRED)
 - Deciders: owner + orchestrator
 - Toolchain: bend v2.0.39 (installed locally via the official installer)
 
@@ -80,3 +80,20 @@ reduced-surface quantifier workarounds are honest patches recorded in
   it becomes *release-gating* after Milestone 3, when ObservedState
   extends and the bridge covers more of Compute.
 - GPU/CUDA CI: never required for v0 laws (CPU mode suffices).
+
+## Amendment 2026-11-04 (owner verdict — laws job REQUIRED)
+
+The M3-carried "make laws CI REQUIRED-vs-optional" question is resolved:
+the `laws` CI job (`.github/workflows/ci.yml`) is **REQUIRED** — a
+non-optional PR/push gate, not a noted-only job. ADR-0015 makes no
+proof-vs-bridge distinction inside CI: `make laws` is one gate
+(proof gate + differential bridge) and is blessed as a whole, so the
+bridge runs in CI too — the 2026-10-27 "release-gating after Milestone 3"
+clause is satisfied early by this single required job. The gate runs on
+every push/PR (not paths-filtered): it takes seconds, and its scope guard
+(`laws/`, `internal/domain`, `internal/plan`) exceeds a fixed path list.
+Two intended contrasts stand unchanged: the graceful skip remains a
+**local** convenience (Makefile), never a CI behavior; and if the
+`curl | sh` bend install breaks upstream, the documented hardening option
+(digest-pinned vendored install) is the fix — an unavailable toolchain
+fails the job rather than silently voiding the gate.

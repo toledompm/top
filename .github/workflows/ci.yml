@@ -48,8 +48,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./test/hygiene.sh
 
-  # T-113 / ADR-0015: optional law gate (proofs + differential bridge).
-  # Fork-safe; graceful-skip semantics live in the Makefile target.
+  # T-113 / ADR-0015: REQUIRED law gate (proofs + differential bridge —
+  # owner verdict 2026-11-04 resolves the M3 REQUIRED-vs-optional carry:
+  # the job is non-optional, ADR-0015 amendment). It runs on every push/PR
+  # rather than paths-filtered: the job takes seconds and the scope guard
+  # spans laws/, internal/domain/ and internal/plan/ beyond the workflow's
+  # own paths. Fork-safe; graceful-skip semantics are local-only (Makefile).
   laws:
     runs-on: ubuntu-latest
     steps:
