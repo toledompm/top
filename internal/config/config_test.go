@@ -30,9 +30,6 @@ func TestDefaultIsValid(t *testing.T) {
 	if cfg.Controller.ReconcileIntervalSeconds != 3600 {
 		t.Errorf("reconcile default = %d, want 3600", cfg.Controller.ReconcileIntervalSeconds)
 	}
-	if cfg.Backup.ScheduleSeconds != 86400 || cfg.Backup.RetentionDaily != 14 || cfg.Backup.RetentionWeekly != 8 {
-		t.Errorf("backup defaults wrong: %+v", cfg.Backup)
-	}
 	if cfg.SecretsProvider.Kind != SecretsProviderHostfile {
 		t.Errorf("secrets provider default = %q, want hostfile", cfg.SecretsProvider.Kind)
 	}
@@ -52,14 +49,6 @@ controller:
 git:
   url: https://github.com/example/example-repo
   branch: trunk
-backup:
-  scheduleSeconds: 43200
-  retentionDaily: 7
-  retentionWeekly: 4
-  offsite:
-    enabled: true
-    kind: rclone
-    target: remote:top-backups
 secretsProvider:
   kind: vault
 dataDir: /data/top
@@ -71,9 +60,6 @@ logLevel: debug
 	}
 	if cfg.Controller.PollIntervalSeconds != 30 || cfg.Git.Branch != "trunk" {
 		t.Errorf("file values not applied: %+v", cfg.Controller)
-	}
-	if cfg.Backup.Offsite.Kind != OffsiteRclone || cfg.Backup.Offsite.Target != "remote:top-backups" {
-		t.Errorf("offsite not applied: %+v", cfg.Backup.Offsite)
 	}
 	// vault validates as known-but-unimplemented: config accepts it.
 	if cfg.SecretsProvider.Kind != SecretsProviderVault {
@@ -169,24 +155,6 @@ func TestValidationFieldPaths(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "core") || !strings.Contains(err.Error(), "observability") {
 		t.Errorf("immutable-namespace error should name them: %v", err)
-	}
-}
-
-func TestValidateOffsiteRequiresTarget(t *testing.T) {
-	cfg := Default()
-	cfg.Backup.Offsite.Enabled = true
-	cfg.Backup.Offsite.Kind = "carrier-pigeon"
-	err := Validate(cfg)
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("err = %v", err)
-	}
-	fields := map[string]bool{}
-	for _, fe := range ve.Errors {
-		fields[fe.Field] = true
-	}
-	if !fields["backup.offsite.kind"] || !fields["backup.offsite.target"] {
-		t.Errorf("expected offsite kind+target errors, got %+v", ve.Errors)
 	}
 }
 

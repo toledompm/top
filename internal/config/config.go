@@ -32,17 +32,6 @@ var ReservedNamespaces = []string{"core", "observability"}
 // NamespacePolicyOrder is the fixed reconcile ordering of namespaces.
 var NamespacePolicyOrder = []string{"core", "observability", "default"}
 
-// OffsiteBackupKind enumerates the supported off-site copy mechanisms.
-// rsync-ssh is executed in v0 (T-502); rclone is known-but-unimplemented
-// and fails at resolution time (ADR-0007).
-
-type OffsiteBackupKind string
-
-const (
-	OffsiteRsyncSSH OffsiteBackupKind = "rsync-ssh"
-	OffsiteRclone   OffsiteBackupKind = "rclone"
-)
-
 // SecretsProviderKind enumerates known secret provider kinds. "vault" is
 // known but intentionally unimplemented in v0 (ADR-0008).
 type SecretsProviderKind string
@@ -60,7 +49,6 @@ type Config struct {
 	Git        GitConfig        `yaml:"git" json:"git"`
 
 	Namespaces      NamespacesConfig      `yaml:"namespaces" json:"namespaces"`
-	Backup          BackupConfig          `yaml:"backup" json:"backup"`
 	SecretsProvider SecretsProviderConfig `yaml:"secretsProvider" json:"secretsProvider"`
 
 	DataDir  string `yaml:"dataDir" json:"dataDir"`
@@ -86,37 +74,6 @@ type NamespacesConfig struct {
 	Reserved []string `yaml:"reserved" json:"reserved"`
 	// Order is the fixed reconcile order across namespaces.
 	Order []string `yaml:"order" json:"order"`
-}
-
-// BackupConfig is the metadata backup schedule (ADR-0007). Offsite is
-// parsed and validated in v0 but not acted on until Milestone 5.
-type BackupConfig struct {
-	ScheduleSeconds int           `yaml:"scheduleSeconds" json:"scheduleSeconds"`
-	RetentionDaily  int           `yaml:"retentionDaily" json:"retentionDaily"`
-	RetentionWeekly int           `yaml:"retentionWeekly" json:"retentionWeekly"`
-	Offsite         OffsiteConfig `yaml:"offsite" json:"offsite"`
-}
-
-// OffsiteConfig describes the optional off-host copy target (T-502:
-// parsed, validated, and executed v0 for rsync-ssh; rclone stays
-// known-but-unimplemented and fails at resolution — ADR-0007/0013).
-type OffsiteConfig struct {
-	Enabled bool              `yaml:"enabled" json:"enabled"`
-	Kind    OffsiteBackupKind `yaml:"kind" json:"kind"`
-	// Target is the destination spec. rsync-ssh: exactly
-	// "<user>@<host>:<path>" (no IPv6 literal, no whitespace in v0).
-	Target string `yaml:"target" json:"target"`
-	// Options are extra rsync flags; only a small value-less whitelist is
-	// accepted (-a/-z/-c/-W), enforced at execution time by
-	// internal/backup's copier (never translated blindly to rsync
-	// behavior).
-	Options []string `yaml:"options" json:"options"`
-	// Port is the SSH port (0 = ssh default).
-	Port int `yaml:"port" json:"port"`
-	// TimeoutSeconds bounds SSH connection establishment (0 = the copier's
-	// default, internal/backup.DefaultOffsiteConnectTimeoutSeconds). Total
-	// copy time is bound by the invoking job's context, not here.
-	TimeoutSeconds int `yaml:"timeoutSeconds" json:"timeoutSeconds"`
 }
 
 // SecretsProviderConfig selects the secret provider implementation.
@@ -154,7 +111,7 @@ var (
 )
 
 // Default returns the fully-defaulted configuration (ADR-0002/0003 for the
-// intervals, ADR-0007 for backups, ADR-0008 for secrets, ADR-0004/0010 for
+// intervals, ADR-0008 for secrets, ADR-0004/0010 for
 // data paths). Tests and tier-3 CI override DataDir.
 func Default() Config {
 	return Config{
@@ -170,15 +127,6 @@ func Default() Config {
 		Namespaces: NamespacesConfig{
 			Reserved: append([]string(nil), ReservedNamespaces...),
 			Order:    append([]string(nil), NamespacePolicyOrder...),
-		},
-		Backup: BackupConfig{
-			ScheduleSeconds: 86400,
-			RetentionDaily:  14,
-			RetentionWeekly: 8,
-			Offsite: OffsiteConfig{
-				Enabled: false,
-				Kind:    OffsiteRsyncSSH,
-			},
 		},
 		SecretsProvider: SecretsProviderConfig{
 			Kind: SecretsProviderHostfile,
@@ -318,37 +266,6 @@ func Validate(cfg Config) error {
 	if cfg.Controller.ReconcileIntervalSeconds <= 0 {
 		add("controller.reconcileIntervalSeconds", "must be > 0 (got %d)", cfg.Controller.ReconcileIntervalSeconds)
 	}
-	if cfg.Backup.ScheduleSeconds <= 0 {
-		add("backup.scheduleSeconds", "must be > 0 (got %d)", cfg.Backup.ScheduleSeconds)
-	}
-	if cfg.Backup.RetentionDaily <= 0 {
-		add("backup.retentionDaily", "must be > 0 (got %d)", cfg.Backup.RetentionDaily)
-	}
-	if cfg.Backup.RetentionWeekly <= 0 {
-		add("backup.retentionWeekly", "must be > 0 (got %d)", cfg.Backup.RetentionWeekly)
-	}
-	if cfg.Backup.Offsite.Enabled {
-		switch cfg.Backup.Offsite.Kind {
-		case OffsiteRsyncSSH, OffsiteRclone:
-		default:
-			add("backup.offsite.kind", "unknown offsite kind %q (known: rsync-ssh, rclone)", cfg.Backup.Offsite.Kind)
-		}
-		if strings.TrimSpace(cfg.Backup.Offsite.Target) == "" {
-			add("backup.offsite.target", "required when offsite enabled")
-		}
-		if cfg.Backup.Offsite.Port < 0 || cfg.Backup.Offsite.Port > 65535 {
-			add("backup.offsite.port", "want 1-65535 (0 = default), got %d", cfg.Backup.Offsite.Port)
-		}
-		if cfg.Backup.Offsite.TimeoutSeconds < 0 {
-			add("backup.offsite.timeoutSeconds", "want >= 0 (0 = default), got %d", cfg.Backup.Offsite.TimeoutSeconds)
-		}
-		for _, opt := range cfg.Backup.Offsite.Options {
-			if strings.ContainsAny(opt, " \t\n\r") {
-				add("backup.offsite.options", "flag %q must be a single atom (argv-only, no shell strings)", opt)
-			}
-		}
-	}
-
 	switch cfg.SecretsProvider.Kind {
 	case SecretsProviderHostfile, SecretsProviderVault:
 		// vault is known-but-unimplemented; failing at *resolution* time

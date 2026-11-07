@@ -39,15 +39,6 @@ Only scalar leaves: `TOP_CONTROLLER_POLL_INTERVAL_SECONDS`,
 | `git.branch` | string | `main` | platform repo branch |
 | `namespaces.reserved` | list | `[core, observability]` | platform-only namespaces; `core`/`observability` are immutable members and may not be un-reserved |
 | `namespaces.order` | list | `[core, observability, default]` | fixed reconcile order |
-| `backup.scheduleSeconds` | int | `86400` | daily snapshot (ADR-0007) |
-| `backup.retentionDaily` | int | `14` | days |
-| `backup.retentionWeekly` | int | `8` | weeks |
-| `backup.offsite.enabled` | bool | `false` | T-502: executed in v0 (rsync-ssh) |
-| `backup.offsite.kind` | enum | `rsync-ssh` | `rsync-ssh` \| `rclone` (rclone known-but-unimplemented: fails at resolution, v0 vault posture) |
-| `backup.offsite.target` | string | `""` | required when enabled; `user@host:path` (no IPv6/whitespace) |
-| `backup.offsite.options` | strings | `[]` | extra rsync flags; whitelist-enforced by the copier (single atoms only) |
-| `backup.offsite.port` | int | `0` | SSH port, 1-65535 (0 = default) |
-| `backup.offsite.timeoutSeconds` | int | `0` | SSH connect timeout (0 = copier default 15s) |
 | `secretsProvider.kind` | enum | `hostfile` | `hostfile` in v0; `vault` is known-but-unimplemented (accepted by config, fails as `secrets.ErrUnimplemented` at resolution — ADR-0008) |
 | `dataDir` | string | `/var/lib/top` | absolute path; overrideable for tests and tier-3 CI |
 | `logLevel` | enum | `info` | `debug` \| `info` \| `warn` \| `error` |
@@ -59,5 +50,4 @@ Only scalar leaves: `TOP_CONTROLLER_POLL_INTERVAL_SECONDS`,
 - `namespaces.reserved`: non-empty, no duplicates, contains `core` and
   `observability`.
 - `namespaces.order`: exactly `core → observability → default`.
-- `backup.offsite`: when enabled, `kind` must be known and target non-empty; port 1-65535 (or 0), timeoutSeconds >= 0, options must be single-atom strings (flag whitelist enforced at execution).
 - JSON marshal is defined and value-free (CLI `-o json` friendliness).
