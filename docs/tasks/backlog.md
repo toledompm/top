@@ -231,6 +231,26 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
   binaries, checksums, install-top.sh pinning, CHANGELOG. Deps: T-506.
   AC: install from release artifact on clean VM. Agent: core-go.
 - **T-508 v0 review + tag.** Approval: **owner.** Agent: review.
+  **Status: DONE 2026-11-07** — v0.1.0 pushed to
+  https://github.com/toledompm/top (tag on `main` at `67d361e`).
+
+## Milestone 6 — Remote `topctl` (accepted 2026-11-07 with ADR-0016; unscheduled)
+
+- **T-601 ssh transport in `internal/exec`.** Runner variant for a host
+  target (`--host USER@HOST` / `TOPCTL_HOST`): BatchMode, ConnectTimeout,
+  typed host-key refusal + loud `--dangerous-accept-new-host` opt-in,
+  redaction parity with the exec canon. Deps: ADR-0016. AC: tier-1
+  refusal/timeouts matrix. Tests: tier 1. Agent: core-go.
+- **T-602 Verb threading.** Steady-state verbs (diff/doctor/deploy/
+  history/logs/reconcile --now/uninstall) accept the host target; local
+  mode unchanged and remains CI's mode. Deps: T-601. AC: M6 acceptance
+  1, 3, 4. Tests: tier 1. Agent: core-go/cli-go.
+- **T-603 tier-3 ssh-container twin.** sshd container + real verbs
+  against a Dokku container; M6 acceptance 1+2+5 evidence. Deps: T-602.
+  Tests: tier 3 (disposable). Agent: test.
+- **T-604 Owner docs pass.** Remote ops runbook (homelab flow from the
+  operator's machine) + contracts rows (`--host`). Deps: T-602. Agent:
+  docs.
 
 ---
 

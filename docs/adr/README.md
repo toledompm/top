@@ -44,3 +44,4 @@ contributor understands *why* without asking anyone.
 | [0013](0013-backup-scope-boundary.md) | Backup scope: operator-managed, metadata vs application data | accepted | no |
 | [0014](0014-public-local-boundary.md) | Public repo vs local environment boundary | accepted | no |
 | [0015](0015-bend-laws.md) | Bend formal laws for the pure core (prototype) | accepted | — |
+| [0016](0016-remote-topctl.md) | Remote `topctl`: drive the host from the operator's machine over plain ssh | accepted (2026-11-07) | — |
