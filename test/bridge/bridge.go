@@ -419,6 +419,12 @@ func bendAsk(t *testing.T, lawDir, binary string, s redsvc, ob *redobs, self []r
 		t.Fatalf("bend run: %v\n%s", err, out)
 	}
 	line := strings.TrimSpace(string(out))
+	// bend ≥2.0.40 appends an "update available" banner after the result
+	// line; the JSON result is the FIRST line of the output.
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	line = strings.TrimSpace(line)
 	if !strings.HasPrefix(line, "{") {
 		t.Fatalf("bend emitted non-JSON: %q", line)
 	}
