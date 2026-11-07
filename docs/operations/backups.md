@@ -1,14 +1,13 @@
 # Backups
 
-> Status: **engine real (M5, T-501/T-502)** — the `internal/backup` engine
-> (create/verify/prune over the SQLite registry) and the rsync/SSH offsite
-> copy are implemented and tested (`internal/backup/README.md`). The
-> **`topctl backup` CLI verbs (`create`/`list`/`verify`) are NOT wired
-> yet**: they parse and answer the honest not-implemented stub
-> (`internal/cli/stubs.go`, the `backup` group) — the engine is reachable
-> only from Go code today. That wiring is a pending owner decision
-> (backlog R8); this runbook marks each such gap **[CLI pending]**.
-> Scope decisions: ADR-0007 (mechanism) and ADR-0013 (boundary).
+> Status: **v0 — operator-managed.** In v0, TOP ships no backup scheduler,
+> no `topctl backup` CLI verbs, and no offsite wiring. Backups of TOP's
+> own metadata are run by the operator using the recipe below. The
+> `internal/backup` engine (create/verify/prune + the rsync/SSH offsite
+> copy, `internal/backup/README.md`) is implemented and tested as an
+> internal library building toward post-v0 scheduling/CLI/offsite —
+> nothing in v0 calls it. Scope decisions: ADR-0007 (mechanism, v0
+> scope) and ADR-0013 (boundary).
 
 ## The one-line boundary
 
@@ -25,58 +24,54 @@ strategy (see the cookbook below).
 | Backup registry + watermarks | Git credentials (re-provisioned per runbook) |
 | (Redacted) config | Application volumes/databases |
 
-## Mechanism (as implemented)
+## The v0 operator recipe
 
-- `Engine.Create` runs `VACUUM INTO` a timestamped file in
-  `<dataDir>/backups/` — a consistent, WAL-safe copy, never a raw file
-  copy. The watermark is the newest operation ID at snapshot time.
-  Same-second creates take numeric suffixes; the backup directory is
-  append-only (a re-run never overwrites a real backup) (`internal/backup/create.go`).
-- After creation: verification — the copy is opened **strictly
-  read-only**, gets header-magic + `PRAGMA integrity_check` checks and a
-  watermark-presence test against the copy's own operation history, and
-  the registry result row is always stamped (`internal/backup/verify.go`).
-- **Offsite copy (optional, rsync/SSH)**: after a create, the new backup
-  file is synced to the configured rsync target
-  (`backup.offsite.target: "user@host:path"` in `top-config.yaml`; extra
-  args are whitelist-checked — value-free `-a/-z/-c/-W` forms only).
-  Offsite failure **alarms but never fails the local backup**: the result
-  is recorded in the offsite metrics only
-  (`top_backup_offsite_last_success_timestamp`,
-  `top_backup_offsite_total{result}`) — `internal/backup/offsite.go`.
-  `kind: rclone` is config-known but not wired (**owner decision R6**).
-- Retention: `backup.Policy{KeepDaily: 14, KeepWeekly: 8}` — the ADR-0007
-  default; daily keeps the newest backup per distinct day, weekly picks
-  from the non-daily remainder per distinct ISO week, the newest backup
-  always survives, and pruning deletes the file before the registry row
-  (`internal/backup/prune.go`). The engine's `Plan` computes what would
-  be deleted without touching anything; `Prune` still needs the caller's
-  consent — the CLI confirmation on manual runs, or the configured policy
-  as standing consent on a scheduled tick.
-- Metrics: `top_backup_last_success_timestamp`,
-  `top_backup_last_verify_result`, plus
-  `top_backup_duration_seconds`/`top_backup_total{result}` (ADR-0010
-  set). A stale backup is a first-class alertable condition.
+Everything you need is SQLite tooling on the host. Both steps come
+straight from the engine's documented mechanics, so a post-v0 wiring
+lands on the same shape.
 
-**[CLI pending]** `topctl backup create`, `list`, `verify` (and the
-planned `prune`) do not yet call the engine — they exit 2/0 with the
-"not implemented" envelope. Manual backups today are either the wired
-restore path's own safety snapshots (`<dataDir>/backups/safety/`) or a
-Go/CLI wiring away. The intended CLI flow (verbatim from
-`internal/backup/README.md` §"Wiring the CLI"):
+1. **Snapshot** (consistent, WAL-safe — never a raw `cp` of the live
+   file, ADR-0007):
+
+   ```console
+   $ sqlite3 /var/lib/top/top.db "VACUUM INTO '/var/lib/top/backups/top-<timestamp>.db'"
+   ```
+
+   `VACUUM INTO` produces a fully-compacted, consistent copy taken
+   against a read transaction; it is safe while the controller is up
+   (take extra care to quiesce nothing — WAL guarantees the snapshot).
+   Rotate the timestamp yourself; the backup directory is append-only by
+   convention — never overwrite a previous backup file.
+
+2. **Prune** (the ADR-0007 retention policy: keep the newest backup per
+   distinct day for **14 days**, then the newest per distinct ISO week
+   from the remainder for **8 weeks**; the newest backup always
+   survives). Delete oldest files first, oldest-survivor rule: anything
+   older than both the 14-day daily window and the 8-week weekly window
+   can go. The exact algorithm (which the pruning wave reuses verbatim)
+   is documented in `internal/backup/prune.go` and
+   `internal/backup/README.md` §"Retention algorithm".
+
+3. **Off-host copy (your transport, v0)**: an rsync/SSH copy of the new
+   backup file to a host of your choice is the lifeline
+   `topctl recover restore` accepts (`user@host:path`), so drill the
+   restore from the remote side at least once.
+
+## Verify a snapshot
+
+A snapshot is trustworthy only after verification. Open the copy
+strictly read-only and check integrity plus watermark presence:
 
 ```console
-$ topctl backup create           # Create → offsite Copy (non-fatal) → Verify
-$ topctl backup list             # the backup-registry rows (newest first)
-$ topctl backup verify [label]   # integrity + watermark (default: latest)
-$ topctl backup prune            # Plan → render kept/pruned → confirm → Prune
+$ sqlite3 'file:/var/lib/top/backups/top-<timestamp>.db?mode=ro' \
+    'PRAGMA integrity_check;'
 ```
 
-**[CLI pending]** The controller does **not yet** schedule backups on its
-own: it has no daily-jobs seam, so scheduling is caller-invoked (the
-contract's "M5 proposal" wording in `docs/contracts/backup-recovery.md`;
-owner decision R5 covers both the jobs seam and the scheduled-tick
-consent).
+`PRAGMA integrity_check` must answer `ok`, and the copy must contain the
+operation rows it should (its watermark — the newest operation ID at
+snapshot time — is the reference point `topctl recover restore`
+admission-checks). The engine's `Verify` performs exactly this plus the
+registry stamping, for when that wiring lands.
 
 ## Restoring
 
@@ -84,6 +79,21 @@ consent).
 (M5/T-503): it follows the ADR-0007 safeguard order, refuses to overwrite
 a newer database without `--force`, snapshots the current DB first, and
 also accepts `user@host:path` to pull the offsite lifeline first.
+
+## Engine reference (library only in v0)
+
+The `internal/backup` package implements the BackupProvider contract as
+a tested library: `Engine.Create` (`VACUUM INTO`, watermark = newest
+operation ID, append-only directory), `Verify` (read-only integrity +
+watermark check, registry result stamped always), `Plan`/`Prune` (pure
+consent artifact + destructive apply per `backup.Policy{KeepDaily: 14,
+KeepWeekly: 8}`), and `Offsite.Copy`/`Offsite.Pull` (one rsync
+invocation syncing one file; failure alarms but never fails the local
+backup). Metrics (`top_backup_last_success_timestamp`,
+`top_backup_last_verify_result`, …) are emitted by the engine when it
+runs — which, again, no v0 component does. See
+`internal/backup/README.md` for the API and the post-v0 composition
+plan.
 
 ## Application-data cookbook (not automated in v0)
 
