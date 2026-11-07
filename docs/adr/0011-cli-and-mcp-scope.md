@@ -31,8 +31,6 @@ versioned output schema:
   self-deploy, ADR-0005)
 - `topctl history <ns/name>` — deployment/reconciliation operations
 - `topctl logs <ns/name>` — convenience proxy to Dokku logs
-- `topctl backup create|list|verify`
-- `topctl recover diagnose|restart|redeploy|restore` — controllerless (ADR-0005)
 - `topctl install <repo>` / `topctl uninstall` — approval-gated (ADR-0009)
 - `topctl doctor` — portable preflight/environment check usable pre-install
 
@@ -41,7 +39,7 @@ side-effect-free; mutating commands accept `--dry-run`; destructive commands
 require `--confirm` or interactive approval; all output redacts secrets.
 
 **MCP deferral mechanics**: CLI commands are thin wrappers over an internal
-application-service layer (`internal/reconcile`, `internal/recover`, …), so a
+application-service layer (`internal/reconcile`, `internal/install`, …), so a
 future `topctl mcp serve` can expose the same operations with explicit tool
 boundaries (read tools vs write tools vs approval-required tools) without
 refactoring. The MCP ADR, when written, must define: tool allowlist, which

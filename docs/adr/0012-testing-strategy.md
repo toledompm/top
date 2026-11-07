@@ -32,9 +32,8 @@ pyramid must reflect that.
    (Lima template committed to `test/e2e/`, cloud-init installing Docker +
    Dokku) running the scripted acceptance suite: install → reconcile core +
    observability → webhook change → missed-webhook poll recovery → manual
-   diff/reconcile → invalid-spec rejection → controller restart mid-operation
-   → TOP-down workload survival → independent recovery → backup/restore →
-   ownership-safe uninstall. `test/e2e/run.sh` is one command end-to-end.
+   diff/reconcile → invalid-spec rejection → controller restart mid-
+   operation → TOP-down workload survival → ownership-safe uninstall. `test/e2e/run.sh` is one command end-to-end.
 
 **Failure injection** lives in tiers 3–4: killed controller mid-deploy,
 corrupted/wedged SQLite, failing healthchecks, invalid ServiceSpecs, Dokku

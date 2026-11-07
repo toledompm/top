@@ -24,9 +24,8 @@
 > Mac — portable confirmed.
 >
 > **Amendments applied during M2** (documented in-place):
-> - ADR-0006: the recovery/bootstrap direct-dokku carve-out (recover +
->   install phase-2 exec dokku directly; inventory reads for the same
->   reason).
+> - ADR-0006: the bootstrap direct-dokku carve-out (install phase-2 execs
+>   dokku directly; inventory reads for the same reason).
 > - ADR-0012's CI: conformance joins after M2; the laws gate + a separate
 >   optional CI job for `make laws` shipped in M1.5.
 > - `internal/install`'s health-wait pacing has a documented env knob
@@ -51,7 +50,7 @@ the real loop).
 ## Non-goals
 
 - GitOps loop, webhooks, diff engine (M3).
-- Observability stack (M4). Backups (M5).
+- Observability stack (M4).
 
 ## Prerequisites
 
@@ -70,7 +69,6 @@ the real loop).
   printed change list).
 - `topctl uninstall` with tiered `--purge-*` flags and the two-key
   (ledger + label) deletion rule.
-- `internal/recover` skeleton: `diagnose` works against a bare host.
 
 ## Acceptance criteria (maps to global tests 1, 11)
 
@@ -87,8 +85,9 @@ the real loop).
 
 - Dokku install declined → clean stop with instructions.
 - Port 80 occupied pre-install → preflight failure naming the conflict.
-- Bootstrap deploy failure → ledger marks `bootstrap-failed`, diagnose
-  explains recovery.
+- Bootstrap deploy failure → ledger marks `bootstrap-failed`, the op
+  record explains next steps; re-running the installer completes the
+  bootstrap.
 - Uninstall attempted while ledger/labels disagree → skip + warn, no deletion.
 
 ## Documentation

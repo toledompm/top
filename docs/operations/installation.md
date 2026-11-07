@@ -126,7 +126,7 @@ per the dry-run integration tests), matching
 | 0 | `0-preflight` | `topctl doctor` + installer-specific checks (repo reachable/non-empty per ADR-0005, deploy-key material paths). Finder-once: all failures display together. |
 | 1 | `1-inventory` | Snapshot existing containers/images/networks/volumes/listeners/Dokku apps into the resource ledger as `pre-existing` (ADR-0009 — the uninstall ledger's anchor). |
 | 2 | `2-dokku-setup` | With `--install-dokku`: run the pinned upstream bootstrap after explicit confirmation (or the exact sudo commands as a fallback; ADR-0009). Without it: stop with instructions when Dokku is missing; verify version/health when present (≥ 0.38). |
-| 3 | `3-platform-wiring` | `<dataDir>/{secrets,git,backups}` at 0700, `top-internal` network, provision the deploy key + pinned known_hosts, register the repo and verify resource resolution. |
+| 3 | `3-platform-wiring` | `<dataDir>/{secrets,git}` at 0700, `top-internal` network, provision the deploy key + pinned known_hosts, register the repo and verify resource resolution. |
 | 4 | `4-bootstrap-deploy` | One-time direct Dokku deploy of `core-top-controller` from the pinned bootstrap image, with the `top-metadata` SQLite storage mount; recorded in the ledger as `bootstrap-owned`. |
 | 5 | `5-first-reconcile` | One reconciler pass (the install CLI's `FirstRunner` seam, `internal/install/adopt.go`): validates/loads the spec — including the example/fleet repo — and hands ownership of the deployment over per ADR-0005: the ledger row converts `bootstrap-owned → managed` (`store.MarkManaged`), annotated in the phase-5 op record (`adoptedByOp`/`firstRunOp`; owner-blessed 2026-11-04, R3 — installer.md phase 5 + ADR-0005 amendment). |
 | 6 | `6-report` | Prints what was created / adopted / left alone, which secrets still need provisioning, and suggested next commands. |
@@ -143,7 +143,7 @@ Resumability: every phase records a store operation (`kind: install`,
 resumes or skips at the completed phases. On a phase failure, install prints
 the failing command, its output, and the resume command; prior phases stay
 touched. A bootstrap-deploy failure leaves no partially-adopted state — the
-ledger records `bootstrap-failed` and `topctl recover diagnose` explains the
+ledger records `bootstrap-failed` and the failure text carries the
 next steps.
 
 ## After install
@@ -177,7 +177,7 @@ gate/sudo refusal or phase failure; 4 store/backend unavailability.
 | install exits **2** with "gated" guidance | ran a mutating command without `--confirm` | add `--confirm` (deterministic path) or answer the interactive prompt |
 | sudo dialog appears mid-install | ADR-0009 prints exact host commands and never assumes passwordless sudo | confirm once at the keyboard; for scripting, configure passwordless sudo for the install user |
 | `install: … store unavailable` (exit 4) | SQLite store cannot open `<dataDir>/top.db` (permissions, disk) | check the data-dir permissions / disk space, then re-run |
-| bootstrap deploy fails (exit 3, ledgered `bootstrap-failed`) | image pull, mount, or Dokku wiring | `topctl recover diagnose` prints the manual path (`dokku git:from-image …`) and the resume command |
+| bootstrap deploy fails (exit 3, ledgered `bootstrap-failed`) | image pull, mount, or Dokku wiring | the failure text prints the manual path (`dokku git:from-image …`) and the resume command |
 
 ## Uninstall
 

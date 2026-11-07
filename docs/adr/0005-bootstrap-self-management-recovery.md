@@ -1,4 +1,4 @@
-# 0005 — Bootstrap, self-management, and the independent recovery path
+# 0005 — Bootstrap, self-management, and revival
 
 - Status: **accepted** (2026-10-27, owner approval)
 - Date: 2026-10-27
@@ -8,7 +8,7 @@
 
 TOP must manage its own core services and observability stack as ordinary
 TOP-managed workloads (self-management), yet there is a bootstrap boundary:
-nothing can reconcile itself before a reconciler exists. Recovery must also
+nothing can reconcile itself before a reconciler exists. Revival must also
 work when TOP is broken. Both need to be designed explicitly, not emerge
 by accident.
 
@@ -51,19 +51,23 @@ ServiceSpec but does *not* apply new revisions of itself automatically.
 Applying a controller revision requires `topctl deploy core/top-controller`
 (or `--include-controller` on reconcile) — an explicit act. Rationale below.
 
-**Independent recovery.** `topctl recover` is a set of CLI subcommands that run
-on the host and depend only on: the Dokku CLI, the filesystem, and the SQLite
-file — never on the controller, Prometheus, or Grafana being healthy:
+**Revival is Dokku-side.** The controller is a Dokku app like any other: when
+TOP is down, the platform's own runtime keeps it operable. The operator's
+tools are the ones the platform already gives them:
 
-- `topctl recover diagnose` — checks controller app state, recent deploy logs,
+- `topctl doctor` — read-only checks of controller app state, deploy health,
   SQLite integrity/openability, config validity, Dokku health; prints
   actionable findings.
-- `topctl recover restart` — restarts the controller via Dokku.
-- `topctl recover redeploy [--revision <sha>]` — redeploys the controller
-  directly via Dokku (default: last known-good revision from the state DB,
-  falling back to the bootstrap-pinned image).
-- `topctl recover restore --backup <file>` — restores metadata with safeguards
-  (ADR-0007).
+- The controller's **restart policy** (`--restart=always` at bootstrap) brings
+  the app back by itself after a crash or host reboot.
+- `dokku ps:restart core-top-controller` / `dokku ps:rebuild` — the direct
+  Dokku verbs for a manual revive.
+- Re-running `topctl install` — the installer's phases are idempotent and
+  adopt what exists; it completes a partially-run bootstrap. TOP's own
+  metadata DB needs no replace-from-copy: TOP's recorded state is
+  reconstructible by re-running operations (reconcile is idempotent), and
+  protecting the SQLite file is operator-side routine (`dokku storage` bind
+  plus the operator's normal backup recipes).
 
 ## Alternatives considered
 
@@ -77,9 +81,10 @@ file — never on the controller, Prometheus, or Grafana being healthy:
   diff, drift, deploy mechanics all identical) while making the blast radius
   a conscious choice. Revisit after Milestone 5 hardening.
 - **Installer keeps managing core forever** — explicitly forbidden by the
-  product vision; the installer must hand off and shrink to bootstrap+recovery.
-- **Recovery via a second tiny orchestrator** — rejected; recovery is read
-  inspection + a handful of direct Dokku operations, nothing more.
+  product vision; the installer must hand off and shrink to a bootstrap.
+- **Recovery via a second tiny orchestrator** or a TOP-side repair CLI —
+  rejected; revival is read inspection plus a handful of direct Dokku
+  operations the platform already provides, nothing more.
 
 ## Rationale and trade-offs
 
@@ -103,7 +108,7 @@ That is one documented command; release notes will say so.
 - First reconciliation must *adopt* the bootstrap controller deployment
   (same app name) rather than error on drift.
 - Acceptance test (Milestone 4): kill the controller, prove workloads +
-  monitoring keep running, prove `topctl recover` brings the controller back.
+  monitoring keep running and the restart policy revives it.
 
 ## Open questions
 

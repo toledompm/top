@@ -32,17 +32,16 @@ must never require the monitoring stack. The stack must also fit small hosts
 service count is operator-bounded): reconcile duration histogram,
 reconcile/deploy totals by `result`, drift gauge per service, last-successful-
 reconcile timestamp, webhook deliveries by `event,result`, git poll
-duration/result, SQLite op latency, backup last-success timestamp + verify
-result, build_info gauge.
+duration/result, SQLite op latency, build_info gauge.
 
 **Independence properties (acceptance-tested in M4):**
 
 1. Prometheus/Grafana/exporters are plain Dokku apps with `restartPolicy:
    always` — Dokku/Docker keep them up whether or not the controller exists.
 2. The controller never *requires* Prometheus: it exposes `/metrics` but
-   nothing in reconcile/recovery reads monitoring.
-3. Recovery/diagnosis (`topctl recover diagnose`) uses only terminal output,
-   Dokku CLI, and the filesystem — never Grafana.
+   nothing in reconcile reads monitoring.
+3. Diagnosis (`topctl doctor`) uses only terminal output, Dokku CLI, and
+   the filesystem — never Grafana.
 4. Dependency direction: `observability` reconciles *after* `core`
    (ADR-0004); Grafana's datasource points at Prometheus by container name
    over the Dokku network (verified in ADR-0001 research).

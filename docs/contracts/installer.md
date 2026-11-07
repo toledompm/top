@@ -23,7 +23,7 @@ bootstrap **after explicit interactive confirmation** listing changes (apt
 packages, nginx on 80/443, `dokku` user, sshcommand). Without the flag: stop
 with instructions. If present: verify version/health.
 
-**3. Platform wiring** — create `/var/lib/top/{secrets,git,backups}` (0700),
+**3. Platform wiring** — create `/var/lib/top/{secrets,git}` (0700),
 provision deploy key + pinned known_hosts (operator supplies), create the
 shared internal network (`network:create top-internal`), register the repo
 and verify `Resolve(branch)` works. If the repo is missing/empty and
@@ -53,8 +53,8 @@ commands.
 
 Order: stop accepting triggers → `controller lease` acquired → remove
 ledgered managed apps via Dokku (reverse namespace order) → detach TOP
-storage mounts → with `--purge-data`: destroy storage entries + `/var/lib/top`
-+ backup dir (kept by default!) → with `--purge-secrets`: remove secrets +
+storage mounts → with `--purge-data`: destroy storage entries + the
+`/var/lib/top` data dir (kept by default!) → with `--purge-secrets`: remove secrets +
 git keys → with `--uninstall-dokku`: run Dokku's documented purge after a
 separate confirmation that prints its leftovers → final ledger diff report
 proving pre-existing resources survived.
@@ -82,4 +82,4 @@ transport stays the read-only deploy key.
 - Any phase failure: stop, print the failing command, its output, the resume
   command (`topctl install` re-run), and leave prior phases untouched.
 - Bootstrap deploy failure leaves no partially-adopted state: the ledger
-  marks `bootstrap-failed` and `topctl recover diagnose` explains next steps.
+  marks `bootstrap-failed` and the op record (visible in `topctl history`) explains next steps.

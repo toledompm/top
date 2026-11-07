@@ -42,7 +42,7 @@ with a configured struct where needed.
   `LANG`, `TMPDIR` (`DefaultEnvPassthrough`) plus anything you name in
   `EnvPassthrough` or set in `ExtraEnv`. The parent environment is never
   inherited wholesale unless you set `EnvInheritAll: true` — an opt-in for
-  recovery-mode CLI use only.
+  bespoke CLI use.
 - **Redaction.** Register secret *values* in `RedactSeed` (values, never
   names — names may appear anywhere, ADR-0008). Every occurrence in the
   returned stdout/stderr buffers and in any error string this package

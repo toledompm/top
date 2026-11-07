@@ -14,7 +14,7 @@ docs/architecture/   system overview, risk register, test strategy
 docs/adr/            architecture decision records (product decisions, portable)
 docs/contracts/      ServiceSpec, PlatformBackend, StateStore, etc.
 docs/milestones/     milestone plans with acceptance criteria
-docs/operations/     install / recovery / backup / teardown runbooks
+docs/operations/     install / revival / backups (operator recipe) / teardown runbooks
 docs/tasks/          authoritative implementation backlog (backlog.md)
 examples/            fictional, committable example configs
 .local/              PRIVATE local notes (gitignored — never commit)

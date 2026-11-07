@@ -15,11 +15,8 @@ follow [SemVer](https://semver.org) (tags: `v0.X.Y`).
   `release-dry` CI job on tag pushes, and `TOPCTL_VERSION_PIN` +
   checksums-pin support in `install-top.sh`.
 
-## [M5 in flight — backups, recovery, hardening]
-- T-501 backup engine: create/verify/prune with registry + metrics.
-- T-502 offsite backup copy (rsync/SSH) with config fields + metrics.
-- T-503 recovery path: safeguarded restore with refusal matrix.
-- T-504 failure-injection pack (tier-4 scripts + hermetic shard).
+## [M5 in flight — hardening]
+- T-504 failure-injection pack (tier-4 scripts).
 
 ## [M4] — self-managed observability
 - Observability stack: metrics (`top_build_info{version,commit}`, ...)

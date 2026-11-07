@@ -12,45 +12,48 @@ platform state, deployment records) and the data of the workloads TOP manages
 
 ## Decision
 
-**v0 scope: TOP backs up its own metadata only** (ADR-0007), and the product
-says so loudly.
+**In v0 backups are the operator's job, for both scopes.** TOP ships no
+backup mechanism of its own: no scheduler, no CLI verbs, no off-host copy
+wiring. The product says so plainly, and the canonical recipes live in
+`docs/operations/backups.md`.
 
-1. `topctl backup`/`topctl recover restore` concern exclusively the TOP SQLite DB
-   (plus the redacted config and the resource ledger, which live in/alongside
-   it). Secret *values* are excluded (ADR-0008).
-2. **Application data is out of scope for v0 automation.** Dokku storage
-   mounts, app databases, and volume contents are the operator's
-   responsibility; `docs/operations/backups.md` documents *why* and provides
-   a cookbook (filesystem snapshots, `pg_dump`-style per-app jobs as ordinary
-   TOP-managed cron workloads, etc.) without shipping a mechanism.
-3. **What is and isn't recoverable is documented per scenario** in
-   `docs/operations/recovery.md`: e.g. "TOP DB lost → restore from backup,
-   reconcile re-converges apps" vs "app volume lost → TOP does not help;
-   restore from your app-level backup, then `topctl reconcile`".
-4. The extension point is named: a future `BackupProvider` implementation
-   could orchestrate per-service data backups via declared hooks in
-   ServiceSpec (e.g. `spec.backups.preDumpCommand`). Not in v0; the contract
-   reserves the field namespace so adding it is non-breaking.
+1. **TOP's metadata** (the SQLite DB with desired/observed state, the
+   operation ledger, checkpoints; plus the redacted config) is small and —
+   more importantly — *reconstructible*: re-running `topctl install` and
+   letting reconcile converge (which is idempotent) rebuilds the
+   recorded state. The operator's routine copy of the SQLite file under
+   the `dokku storage` mount plus the recipes in the runbook are
+   sufficient; SECRET values are never in that DB (ADR-0008) and get
+   re-provisioned out-of-band.
+2. **Application data is the operator's, unambiguously.** Dokku storage
+   mounts, app databases, and volume contents are never TOP's to back up.
+   `docs/operations/backups.md` documents the why and provides a cookbook
+   (filesystem snapshots, `pg_dump`-style per-app jobs as ordinary
+   TOP-managed cron workloads, etc.). The extension point is noted only:
+   a future service-data backup feature could orchestrate per-service
+   dumps via declared hooks in ServiceSpec (e.g.
+   `spec.backups.preDumpCommand`); nothing is reserved for it today.
+3. **What is and isn't rebuildable is documented per scenario**: TOP DB
+   lost → wipe the state file, re-install, reconcile re-converges the
+   apps; app volume lost → TOP does not help; restore from your
+   app-level backup, then `topctl reconcile`.
 
 ## Alternatives considered
 
 - **Full-scope backups (metadata + app data) in v0** — every app stores data
   differently; a generic mechanism is either useless (raw volume tars) or a
   product of its own. Explicitly rejected by the brief's non-goals.
-- **No backups at all in v0** — TOP's DB is small and its loss is recoverable
-  by reconstruction, but deployment history + ledger + checkpoints are
-  operationally valuable and cheap to protect. Metadata-only is the right
-  scope.
+- **TOP-managed metadata backups (scheduler + CLI + engine) in v0** — the
+  metadata is cheap to rebuild, and an operator with one host already has a
+  backup habit. Explicitly rejected by owner ruling; revisit only if
+  multi-host scale arrives with it.
+- **No backups at all, not even operator recipes** — the runbook's cookbook
+  (both scopes) costs documentation only and is what a one-operator homelab
+  actually needs.
 
 ## Consequences
 
-- Release notes, README, and the CLI help text all carry the one-line
-  boundary: "TOP backs up TOP. Your apps' data is yours."
-- The recovery runbook's disaster scenario includes re-provisioning secrets
-  and app data as separate, manual steps.
-
-## Open questions
-
-- Should the backup include a *names-and-checksums* manifest of secret store
-  contents to simplify re-provisioning? Proposal: yes (names + SHA-256, no
-  values); confirm in Milestone 5.
+- Release notes and README carry the one-line boundary: "your apps' data is
+  yours — TOP ships no backup machinery."
+- The runbook's recipes include re-provisioning secrets and app data as
+  separate, manual steps.

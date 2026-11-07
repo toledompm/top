@@ -37,15 +37,14 @@ Prove independence: TOP down ⇒ workloads + monitoring keep running.
       via poll with the webhook deliberately dropped).
 - [ ] `docker kill` the controller (and later `dokku ps:stop`): Prometheus,
       Grafana, exporters, and a sample user app keep running; controller
-      returns via Dokku restart policy / `recover restart`; missed changes
-      reconcile on return.
+      returns via Dokku restart policy; missed changes reconcile on return.
 - [ ] `topctl status` shows drift on `core-top-controller` when its spec
       revision advances, and `topctl deploy core/top-controller` applies it
       (human-gated path) with old-release preservation on failure.
 
 ## Failure scenarios
 
-- Grafana down ≠ blindness: `recover diagnose` still fully functional.
+- Grafana down ≠ blindness: `topctl doctor` still fully functional.
 - Prometheus spec broken → reconcile fails contained; controller unaffected.
 - Controller self-deploy to a broken image → checks fail, old controller
   keeps running, op recorded failed.

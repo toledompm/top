@@ -15,7 +15,7 @@ without enterprise-java ceremony.
 
 **One Go module, one binary.** The module `github.com/toledompm/top` (module
 path confirmed with owner) produces a single `topctl` binary; the controller is
-`topctl controller run`, the recovery path is `topctl recover ...`, etc. One binary
+`topctl controller run`, the installer is `topctl install`, etc. One binary
 keeps installation, versioning, and the bootstrap deploy trivial, and the
 controller image is built from the same commit as the CLI that deployed it.
 
@@ -38,8 +38,6 @@ internal/
   webhook/               HTTP endpoint, HMAC verify, dedup, enqueue
   controller/            loops (poll, reconcile), HTTP server, metrics wiring
   install/               preflight, ownership inventory, bootstrap deploy
-  recover/               diagnose/restart/redeploy/restore (controllerless)
-  backup/                SQLite-safe backup, retention, verification
   secrets/               host secret store resolution (ADR-0008)
   exec/                  safe subprocess wrapper (timeouts, redaction, argv)
   config/                TOP's own config load/validate/versioning
@@ -47,7 +45,7 @@ internal/
 ```
 
 **Interfaces only at infrastructure boundaries**: `PlatformBackend`,
-`StateStore`, `GitSource`, `BackupProvider`. No interfaces for single structs
+`StateStore`, `GitSource`. No interfaces for single structs
 with one implementation and no test need.
 
 **Contracts live in docs first** (`docs/contracts/`), then become Go
@@ -81,20 +79,18 @@ is controlled by the package map above plus `go vet`/lint in CI.
   no shell string interpolation (argv slices only), and secret redaction.
 - Domain + plan packages are pure and get high unit-test coverage targets.
 
-## Amendment (M2, 2026-10-27): the recovery/bootstrap carve-out
+## Amendment (M2, 2026-10-27): the bootstrap carve-out
 
 `internal/backend/dokku` remains the only place that *builds Dokku argv*
-in normal operation, with one documented exception pair: the
-install/bootstrap path (`internal/install` phase 2, pre-backend
-bootstrap — ADR-0005: "small, deterministic, separate from the
-reconciliation loop") and the independent recovery path
-(`internal/recover` — must work when TOP is down). Both exec the `dokku`
-CLI directly through the shared `internal/exec` seam; the exception is
-structural because the backend assumes an operating TOP.
+in normal operation, with one documented exception: the install/bootstrap
+path (`internal/install` phase 2, pre-backend bootstrap — ADR-0005:
+"small, deterministic, separate from the reconciliation loop"), which
+execs the `dokku` CLI directly through the shared `internal/exec` seam;
+the exception is structural because the backend assumes an operating TOP.
 `internal/inventory` reads dokku/docker state directly for the same
-bootstrap reason. Argv command facts may live in three packages by
-design — any change to phase-2/recover verbs must mirror the adapter's
-command conventions and document itself in the package READMEs.
+bootstrap reason. Argv command facts may live in two packages by design —
+any change to phase-2 verbs must mirror the adapter's command conventions
+and document itself in the package READMEs.
 
 ## Open questions
 

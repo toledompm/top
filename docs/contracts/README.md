@@ -13,7 +13,6 @@ generated docs take over and these remain the rationale.
 | StateStore | SQLite persistence for state, operations, checkpoints | [state-store.md](state-store.md) |
 | Reconciler | Diff → plan → apply loop, retries, idempotency, serialization | [reconciler.md](reconciler.md) |
 | GitSource | Repo registration, revision tracking, webhook/poll intake | [git-source.md](git-source.md) |
-| Backup & Recovery | Consistent metadata backups + independent recovery path | [backup-recovery.md](backup-recovery.md) |
 | Installer/Bootstrap | Preflight, ownership inventory, bootstrap deploy, teardown | [installer.md](installer.md) |
 | CLI | Command surface, JSON output schema, safety flags | [cli.md](cli.md) |
 
@@ -22,13 +21,13 @@ generated docs take over and these remain the rationale.
 - **Operation tracking**: every mutating action is an *Operation* with a
   stable `OperationID`, `kind`, `state` (`pending` → `running` →
   `succeeded` | `failed` | `aborted`), actor (`user`, `controller`,
-  `webhook`, `recovery`), `correlationID`, started/finished timestamps, and a
+  `webhook`, `schedule`), `correlationID`, started/finished timestamps, and a
   redacted error string on failure. Operations are append-only.
 - **Idempotency**: applying the same desired state twice changes nothing and
   returns the same plan (empty diff). Retried operations resume from recorded
   checkpoints, never from scratch.
 - **Errors**: typed, wrapped with context (`fmt.Errorf("...: %w")`), and
-  surfaced with an actionable hint ("dokku reported X; check `topctl recover
-  diagnose`").
+  surfaced with an actionable hint ("dokku reported X; check `dokku ps`.
+ Graceful: if a hint names a TOP verb, that verb must exist on the CLI surface.").
 - **Redaction**: no contract ever carries a secret value; only secret
   *references* (names). See ADR-0008.

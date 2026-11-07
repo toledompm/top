@@ -1,6 +1,6 @@
 // Package exectest provides the test double for internal/exec's Runner:
 // FakeRunner, a tiny, thread-safe, configurable fake. It is THE seam every
-// adapter task (backend/dokku, gitsource, install, recover) uses to test
+// adapter task (backend/dokku, gitsource, install) uses to test
 // behavior without spawning real processes.
 //
 // API surface is deliberately minimal:

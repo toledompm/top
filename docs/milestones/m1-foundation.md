@@ -25,7 +25,7 @@ from ADR-0012).
 - `internal/exec` (`Runner` interface: argv-only, timeouts, WaitDelay, env
   hygiene, redaction) + `test/fakeexec` + dokku shim.
 - `internal/store/sqlite` (modernc driver, DSN pragmas, goose migrations:
-  schema v1 = operations/checkpoints/deliveries/ledger/backups/leases).
+  schema v1 = operations/checkpoints/deliveries/ledger/leases).
 - `internal/config`, `internal/obs` (slog JSON + level var; registry helper).
 - CI: tiers 1–2, lint/vet/fmt, ADR-0014 hygiene grep.
 - Package READMEs; updated AGENTS.md if conventions changed.
@@ -71,11 +71,10 @@ has been removed).
 | Contract | Verdict | Evidence |
 | --- | --- | --- |
 | service-spec.md | **PASS** | internal/spec implements the field table verbatim (strict KnownFields, defaults per doc, file:line ParseErrors, mutable-ref warnings, reserved-namespace guard); contract fixtures parse; conformance probe idempotency over `testdata/valid`. |
-| state-store.md | **PASS** | internal/store (interface) + store/sqlite: operations lifecycle, observed upsert, checkpoints (atomic run+checkpoint), delivery dedup, ledger, backup registry, leases with ErrLocked+holder, schema-version downgrade protection — probed by conformance_check. |
+| state-store.md | **PASS** | internal/store (interface) + store/sqlite: operations lifecycle, observed upsert, checkpoints (atomic run+checkpoint), delivery dedup, ledger, leases with ErrLocked+holder, schema-version downgrade protection — probed by conformance_check. |
 | platform-backend.md | **DEFERRED (planned)** | No `internal/backend` package yet — M2 (read slice, T-201) then M3 (Apply/Readiness, T-305/306). The M1 share is delivered: `exec.Runner` is the declared seam (backed by conformance compile-assert) and the tier-2 dokku shim exercises argv construction. Noted drift: contracts/README.md still says "final Go interfaces are derived … in Milestone 1"; the PlatformBackend interface itself is now an M2/T-201 artifact. |
 | reconciler.md | **PARTIAL — diff step PASS, loop DEFERRED (planned)** | The pure diff step is fully implemented (internal/plan: Compute/ComputeAll, self-service report-only, prune-gated orphans, secret-safe rendering; probed). The pipeline (lease/order/apply/gate/record) is M3 (T-304) as planned. Every field in reconciler.md's diff-output section that plan v0 does not emit (env removal, healthcheck, secret rotation, routing.mode, storage size) traces to a dated M3 note in internal/plan/README.md's coverage matrix + "Known deviations", and to conformance_check's "Known gaps / M3 revisit" instruction. |
 | git-source.md | **DEFERRED (planned)** | M3 (T-301/302/303). Nothing implements it; no drift — the CLI/config surface only carries `git.url`/`git.branch` placeholders. |
-| backup-recovery.md | **DEFERRED (planned)** | M5 (T-501..T-503). The store-side prerequisites exist (backup registry incl. verification status, watermark fields, lease for restore exclusivity); the engine does not — as scheduled. |
 | installer.md | **DEFERRED (planned)** | M2 (T-203..T-209). Stub-level: `topctl doctor/install/uninstall` exist as gated stubs with `--dry-run`/`--confirm` flags; phase wiring is M2. |
 | cli.md | **PASS** (M1 slice) | All contract commands exist as validated stubs; envelope `schemaVersion: 1` pinned by a compile assert; exit codes 0–4 constants exist (stubs can produce 0/2/3; 1 and 4 are reserved for real data — as documented in internal/cli/README); every mutating stub has `--dry-run` + confirm gates. One open item: the `topctl secrets set` command named in ADR-0008 is in neither the cli.md contract table nor the stub tree (see below). |
 
@@ -140,10 +139,8 @@ has been removed).
 | 6 | Invalid spec + failed-deploy safety | 1 + 4 | **½ tier-1 part green** (spec parser rejects all invalid classes with file:line — M1-row evidence); tier-4 deploy-safety half ✗ M3 |
 | 7 | Controller restart mid-operation | 4 | ✗ M5 |
 | 8 | TOP-down survival | 4 | ✗ M4 |
-| 9 | Independent recovery | 4 | ✗ M5 |
-| 10 | Backup + restore | 4 | ✗ M5 (registry/schema prerequisites delivered) |
-| 11 | Uninstall spares foreign resources | 4 | ✗ M2/M5 (ledger primitives delivered; deletion rules unexercised) |
-| 12 | Fresh-eyes contributor run | 4 | ✗ M5 |
+| 9 | Uninstall spares foreign resources | 4 | ✗ M2/M5 (ledger primitives delivered; deletion rules unexercised) |
+| 10 | Fresh-eyes contributor run | 4 | ✗ M5 |
 
 Plus M1-only meta-verification: contract-conformance harness green
 (compile asserts + tagged probes + doc-lint), tier-2 shim flow green,

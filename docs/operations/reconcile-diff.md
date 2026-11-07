@@ -75,7 +75,7 @@ confirm-gated (ADR-0005 human gate for self-management, mirrored in
 `docs/contracts/cli.md`'s deploy row; blessing flagged R4). It applies
 the pending self-drift, keeps the previous release serving until the
 readiness gate passes, and preserves the old release on failure (paid
-back with `topctl recover redeploy`).
+back by re-running the install or `dokku ps:rebuild`).
 
 ## `topctl status` — honest stub
 

@@ -8,16 +8,12 @@ that desired state — like Flux, but for a Dokku box instead of Kubernetes.
 > M1–M5: the `topctl` CLI, the spec/plan/store/exec/secrets/obs
 > foundation, install/uninstall, the GitOps controller (webhook + poll
 > convergence, drift healing, adoption handoff), TOP's own core +
-> Prometheus/Grafana observability as reconciled specs, the independent
-> recovery path (including real `recover restore` with the ADR-0007
-> safeguard order), and the backup engine with rsync/SSH offsite copy
-> and failure-injection coverage (`test/e2e/t504-*.sh`). Before the v0
-> tag: owner verdicts R1–R8 + live-run sign-offs
-> ([backlog](docs/tasks/backlog.md)), release engineering T-507
-> (versioned binaries, checksums, `install-top.sh` pinning). One honest
-> gap: `topctl backup create/list/verify` are still notImpl stubs (R8);
-> the engine is real and `recover restore` is real. License: **MIT**
-> (`LICENSE`).
+> Prometheus/Grafana observability as reconciled specs, and
+> failure-injection coverage (`test/e2e/t504-*.sh`). Before the v0
+> tag: live-run sign-offs ([backlog](docs/tasks/backlog.md)) and
+> release engineering T-507 (versioned binaries, checksums,
+> `install-top.sh` pinning). Backups are the operator's job
+> (see `docs/operations/backups.md`). License: **MIT** (`LICENSE`).
 
 ## What it does
 
@@ -27,9 +23,10 @@ that desired state — like Flux, but for a Dokku box instead of Kubernetes.
   and applies it through Dokku.
 - Drift is detected and corrected; every operation is recorded with a stable
   ID, state, and explainable outcome.
-- `topctl` CLI gives you `status`, `diff`, `reconcile`, `deploy`, `recover`,
-  `backup`, and `uninstall` — including an **independent recovery path** that
-  works even when TOP itself is down.
+- `topctl` CLI gives you `status`, `diff`, `reconcile`, `deploy`, and
+  `uninstall`; when TOP itself is down, the platform stays operable the
+  Dokku way (restart policies, `dokku ps:restart`, re-running the
+  installer).
 - TOP's own core services and the Prometheus/Grafana observability stack are
   ordinary TOP-managed workloads, bootstrapped by a small, explicit installer.
 
@@ -46,7 +43,7 @@ that desired state — like Flux, but for a Dokku box instead of Kubernetes.
 | Architecture overview & diagrams | [`docs/architecture/overview.md`](docs/architecture/overview.md) |
 | Decisions (ADRs) | [`docs/adr/`](docs/adr/README.md) |
 | Contracts (ServiceSpec, backend, store…) | [`docs/contracts/`](docs/contracts/README.md) |
-| Install / operate / recover | [`docs/operations/`](docs/operations/) |
+| Install / operate | [`docs/operations/`](docs/operations/) |
 | Milestones & acceptance criteria | [`docs/milestones/`](docs/milestones/README.md) |
 | Implementation backlog | [`docs/tasks/backlog.md`](docs/tasks/backlog.md) |
 | Agent/contributor conventions | [`AGENTS.md`](AGENTS.md) |

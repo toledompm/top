@@ -5,12 +5,12 @@
 TOP is a single-node GitOps platform: **declarative workload specs in Git,
 continuously reconciled onto a Dokku host** — Flux's operating model at
 homelab scale. One Go binary (`topctl`) serves as CLI, controller, installer,
-and recovery tool. The controller runs *on* Dokku as an ordinary TOP-managed
+and installer. The controller runs *on* Dokku as an ordinary TOP-managed
 app (`core-top-controller`), keeps its metadata in SQLite, and drives Dokku
 exclusively through its CLI. Dokku remains the runtime: builds, containers,
 proxy, storage, reboot survival. TOP adds desired state, planning, drift
-correction, history, backups, and a recovery path that works when TOP itself
-is down. TOP's own core services and the Prometheus/Grafana stack are managed
+correction, and history; revival works when TOP itself is down. TOP's own
+core services and the Prometheus/Grafana stack are managed
 exactly like user workloads; the only special case is that applying a new
 *controller* revision is human-gated (ADR-0005).
 
@@ -37,8 +37,8 @@ this document is the map.
 │                               ▼                │ inspect (JSON reports)             │
 │                    PlatformBackend (dokku adapter, dokku CLI only)                  │
 │                               │                                                     │
-│  StateStore (SQLite, WAL) ────┴── BackupProvider (VACUUM INTO → /var/lib/top/backups│
-│  operations/ledger/checkpoints/deliveries         + offsite copy)                   │
+│  StateStore (SQLite, WAL)                                                           │
+│  operations/ledger/checkpoints/deliveries                                           │
 └───────────────────────────────┬─────────────────────────────────────────────────────┘
                                  │ dokku CLI (exec layer: argv, timeouts, redaction)
                                  ▼
@@ -50,8 +50,7 @@ this document is the map.
 └─────────────────────────────────────────────────────────────────────────────────────┘
 
    topctl CLI on the host:  status · diff · reconcile · deploy · history · logs
-                         backup · recover (diagnose/restart/redeploy/restore — no
-                         controller needed) · install · doctor · uninstall
+                         install · doctor · uninstall
 ```
 
 ## Key flows
@@ -73,10 +72,11 @@ the switch exactly as for a forward deploy; previous images retained via
 `builder:set skip-cleanup true`.
 
 **TOP is down**: workloads keep running (plain Docker containers; Dokku has
-no daemon; `ps:restore` handles reboots). `topctl recover diagnose` inspects
-Dokku + SQLite + logs directly; `recover restart|redeploy` revives the
-controller; `recover restore` rolls metadata back from a verified backup
-with overwrite safeguards.
+no daemon; `ps:restore` handles reboots). Revival is Dokku-side: the
+controller's restart policy, `dokku ps:restart`, `dokku ps:rebuild`, or a
+re-run of `topctl install`; `topctl doctor` inspects Dokku + SQLite + config
+directly. TOP's metadata DB is reconstructible by re-running operations
+(install + reconcile, idempotent).
 
 **Install**: `install-top.sh <repo>` → preflight → ownership inventory →
 (gated) Dokku install → secrets/git wiring → one-time bootstrap deploy of
@@ -90,12 +90,12 @@ app lifecycle/deploy/config/checks/storage/network/ports/logs/builds commands
 and their JSON flags; zero-downtime ordering and old-release preservation;
 `config:set` redeploy behavior; `git:from-image` idempotency + local-tag skip;
 `git:sync` build flags; `ps:restore`/event-listener reboot model; documented
-state dirs and backup tar; supported OS (Ubuntu 22.04/24.04/26.04, Debian
+state dirs; supported OS (Ubuntu 22.04/24.04/26.04, Debian
 11+, x86_64/arm64, ≥1 GB RAM); current stable v0.38.31. Detailed notes with
 URLs are kept in session research; the ADRs encode the conclusions.
 
 **Verified (library/tooling research, 2026-10-27)** — modernc.org/sqlite
-(backup API, WAL pragmas); goose v3 maintenance posture; go-git v5 frozen /
+(WAL pragmas); goose v3 maintenance posture; go-git v5 frozen /
 v6 beta → git CLI chosen; `gopkg.in/yaml.v3` archived → `go.yaml.in/yaml/v3`;
 robfig/cron unmaintained; official `dokku/dokku` Docker image supports
 sock-mounted sibling-container operation; testcontainers-go active.
@@ -121,6 +121,6 @@ commands; surprises encoded in ADR-0001/0002 include `config:set` redeploy
 semantics, `git:from-image` local-tag caching, DIY rollback, event-listener
 interaction, and docs-drift risk → minimum-version pinning); (2) a Go-stack
 pass (SQLite driver + migrations, git access, webhooks, CLI, logging,
-metrics, reconcile loop, exec safety, backup pragmas, YAML library, testing
+metrics, reconcile loop, exec safety, YAML library, testing
 tiers) — accepted choices are in the ADRs; the dependency list lands in
 Milestone 1's `go.mod`.

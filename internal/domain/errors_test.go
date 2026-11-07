@@ -86,10 +86,10 @@ func TestErrorMessagesAreReadable(t *testing.T) {
 
 func TestCorruptErrorAlwaysSuggestsDiagnose(t *testing.T) {
 	t.Parallel()
-	// A custom hint still must not replace the recover path silently;
+	// A custom hint still must not replace the remediation path silently;
 	// contract: callers must surface the reconstruction hint, never a retry.
-	e := CorruptError{Detail: "x", Hint: "restore from backup"}
-	if !strings.Contains(e.Error(), "re-run topctl install") && !strings.Contains(e.Error(), "restore from backup") {
+	e := CorruptError{Detail: "x", Hint: "rebuild the store"}
+	if !strings.Contains(e.Error(), "re-run topctl install") && !strings.Contains(e.Error(), "rebuild the store") {
 		t.Fatalf("corrupt hint lost: %s", e)
 	}
 }

@@ -9,7 +9,7 @@
 Workloads need secrets (API keys, tokens) and TOP needs credentials to read
 private Git repos. Constraints from the brief: no plaintext secrets in Git or
 in ordinary SQLite records, no custom secrets platform, account for file
-permissions and backup implications.
+permissions and off-host copy implications.
 
 ## Decision
 
@@ -26,11 +26,11 @@ permissions and backup implications.
   fact that secret `<name>` was applied at time T), logs, metrics, or CLI
   output (the exec layer redacts registered secret values and anything marked
   sensitive, ADR-0006).
-- **Backup implication**: the secret store is deliberately *excluded* from
-  metadata backups (ADR-0007) — a backup must be safe to copy off-host.
-  Disaster recovery documents that secrets are re-provisioned out-of-band;
-  recovery runbooks list *which* secrets exist (names only) so nothing is
-  forgotten.
+- **Off-host copies**: the operator's own copies of the metadata DB must be
+  safe to move off-host — which is why secret values never enter SQLite at
+  all. Disaster recovery documents that secrets are re-provisioned
+  out-of-band as their own step; store manifests (names only, values never)
+  keep nothing forgotten.
 - **Git credentials**: a dedicated **read-only deploy key** for the platform
   repo, stored at `/var/lib/top/git/` (`id_ed25519` mode 0600 + a pinned
   `known_hosts`). All fetching goes through the git CLI with

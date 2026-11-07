@@ -28,8 +28,9 @@ type Provider interface {
 - **Permissions are load-bearing**: secret files `0600`, store directory
   `0700`. A violation fails loudly and typed (`ErrPerms`) with the exact
   `chmod 600/700 <path>` fix hint — never a silent read of a loose file.
-- **The store is excluded from metadata backups** (ADR-0007); `List()` is
-  the names+checksums manifest recovery runbooks consume.
+- `List()` is
+  the names+checksums manifest operators use to re-provision the store
+  after any host loss.
 - `VaultProvider` is the reserved seam: every operation returns
   `ErrUnimplemented`. Config accepts `secretsProvider.kind: vault` as valid;
   the failure surfaces only at resolution (pure-addition guarantee).

@@ -30,8 +30,8 @@ that shape it:
 
 **TOP owns**: desired state (Git), reconciliation, planning/diff, deployment
 history and operation tracking, readiness *interpretation*, rollback *policy*
-(re-issue previous desired ref), platform policy (namespaces, ordering,
-protected resources), backups of its own metadata, and recovery workflows.
+(re-issue previous desired ref), and platform policy (namespaces, ordering,
+protected resources).
 
 **Dokku owns**: app execution, builds, image lifecycle, container lifecycle,
 proxy/routing, TLS termination, storage mounting, restart/reboot survival of
@@ -67,7 +67,7 @@ workloads, and deploy-time health checking.
 ## Consequences
 
 - "What happens to workloads when TOP is down" = "nothing" (Dokku apps are
-  plain containers), which makes the recovery design (ADR-0005) small.
+  plain containers), which keeps the revival design (ADR-0005) small.
 - Rollback is a TOP-level concept implemented as *re-deploy previous desired
   revision* — natural in GitOps, and it leans on `git:from-image`'s
   idempotency and `source-image` tracking.

@@ -93,7 +93,7 @@ CREATE TABLE leases (
 
 -- +goose Down
 -- Forward-only per ADR-0007; retained for completeness of the goose
--- version list. Never invoked by TOP's controller or recovery path.
+-- version list. Never invoked by TOP's controller.
 DROP TABLE leases;
 DROP TABLE resources;
 DROP TABLE deliveries;

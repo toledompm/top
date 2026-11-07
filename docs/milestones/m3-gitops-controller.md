@@ -80,7 +80,7 @@ healthz, metrics).
 ## Non-goals
 
 - Self-management wiring (M4 turns the loop onto TOP itself).
-- Backup scheduling (M5). Fine-grained per-path webhook fast paths (never?).
+- Fine-grained per-path webhook fast paths (never?).
 
 ## Prerequisites
 

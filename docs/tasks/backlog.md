@@ -36,7 +36,7 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
   Agent: test.
 - **T-106 SQLite store + migrations.** `internal/store/sqlite`: modernc
   driver, WAL/busy_timeout/FK pragmas, goose embedded migrations; schema v1
-  (operations, checkpoints, deliveries, ledger, backups, leases); lease +
+  (operations, checkpoints, deliveries, ledger, leases); lease +
   delivery-dedup primitives. Deps: T-102. AC: migrate from zero, round-trip
   Operation, concurrent-writer busy handling. Tests: temp-file integration.
   Refs: ADR-0007, state-store.md. Agent: core-go.
@@ -189,9 +189,11 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
   **Status: SCRIPTED 2026-11-03** (`6d487a3`, `test/e2e/t404-webhook-poll.sh`
   + hermetic `lib.sh`/`lib_test.go`); not yet live-run.
 - **T-405 E2E: TOP-down survival.** Acceptance 8: kill/stop controller,
-  assert workloads+monitoring persist, revive via recover. Deps: T-402.
+  assert workloads+monitoring persist, revival via the restart policy
+  (operator posture: `dokku ps:restart` as backstop). Deps: T-402.
   Tests: tier 4. Agent: test. **Status: SCRIPTED 2026-11-03**
-  (`39f104b`, `test/e2e/t405-survival.sh`); not yet live-run.
+  (`39f104b`, kill/revive fingerprint exercise); live revival asserted
+  against the restart policy + `dokku ps:restart`.
 - **T-406 Self-deploy gated path.** Drift report + `topctl deploy
   core/top-controller` flow with failure preservation. Deps: T-304, T-402.
   AC: acceptance in M4 file. Tests: tier 4. Refs: ADR-0005. Risk: high by
@@ -205,70 +207,31 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
   reports (concurrent session), then the clean-VM double run, then owner
   sign-off on decisions R1–R4 + the carried laws-CI decision.
 
-## Milestone 5 — Backups, recovery, hardening
+## Milestone 5 — Operational hardening
 
-- **T-501 Backup engine.** Create/verify/prune + registry + metrics.
-  Deps: T-106. AC: scheduled backup verifies; retention prunes per policy.
-  Tests: unit + tier 3. Refs: ADR-0007. Agent: core-go.
-  **Status: DONE at tier 1 2026-11-03** (`98ac1f7`, `d1af6f0`) — the
-  scheduled/tier-3 slice is inherent in the verified engine; controller
-  scheduling wiring is a separate, undecided seam (verdict **R5**).
-- **T-502 Offsite copy (rsync/SSH).** Config + copy + failure alarming.
-  Deps: T-501. AC: destination-down → local intact + metric. Tests: tier 3
-  (ssh container). Agent: core-go.
-  **Status: DONE at tier 1 2026-11-03** (`58405d3`, `2905fcd`); the
-  tier-3 ssh-container script is SPECCED in `internal/backup/README.md`
-  but not yet committed — carried below. Destination-down behavior
-  verified hermetically (alarm-not-fail, metrics only). Per-row offsite
-  registry marker is a proposal (verdict **R6**).
-- **T-503 Recover suite.** diagnose/restart/redeploy/restore with all
-  safeguards. Deps: T-501, T-202. AC: acceptance 9 + restore-safeguard
-  proofs (watermark refuse, safety snapshot). Tests: tier 4. Refs:
-  ADR-0005/0007, backup-recovery.md. Agent: core-go.
-  **Status: DONE at tiers 1–2 2026-11-03** (`7e7dead`, `7d45808`) —
-  restore real with the verbatim safeguard order + typed refusals;
-  tier-4 live-run rows pending (rollback-refusal exercised by
-  `t504-wedged-db.sh`, disk class by `t504-disk-pressure.sh`). Restore
-  mechanics proposals (no-op-record-after-restore, file-based
-  admission) bundled as verdict **R7**.
 - **T-504 Failure-injection pack.** Scripted matrix from testing-strategy
-  (kill mid-deploy, wedged DB, disk pressure, reboot). Deps: T-503. AC:
-  acceptance 7 + matrix green. Tests: tier 4. Agent: test.
-  **Status: SCRIPTED 2026-11-03** (`8484589`, `a2adf33`, `f96cc5f`,
-  `7ff71eb`, `059b48b`; `test/e2e/t504-*.sh` + tier-1 hermetic shards)
-  — live-run green across the matrix is the AC and remains pending
-  run reports.
-- **T-505 Fresh-eyes contributor run.** External-style run of acceptance 12;
-  fix all doc gaps found. Deps: T-503, docs. AC: checklist signed.
+  (kill mid-deploy, reboot). Deps: T-304. AC: acceptance 7 + matrix green.
+  Tests: tier 4. Agent: test.
+  **Status: SCRIPTED 2026-11-03** (`8484589`, `a2adf33`);
+  `test/e2e/t504-{kill-deploy,reboot}.sh` — live-run green across the
+  matrix is the AC and remains pending.
+- **T-505 Fresh-eyes contributor run.** External-style run of acceptance 10;
+  fix all doc gaps found. Deps: docs. AC: checklist signed.
   **Approval: owner coordinates.** Agent: review + docs.
 - **T-506 Docs completion + ADR acceptance sweep.** All runbooks final;
   ADRs → accepted; README status → v0. Deps: all M5. Agent: docs.
-  **Status: IN PROGRESS 2026-11-03 (docs subagent)** — runbooks re-verified and
-  finalized against the code (backups/recovery/reconcile-diff/
+  **Status: IN PROGRESS 2026-11-03 (docs subagent)** — runbooks re-verified
+  and finalized against the code (backups/reconcile-diff/
   installation/teardown, commit `8dfebe6`); contract code-truth
   alignments flagged with verdict ids (`a0893f6`); stale package
   READMEs fixed (`150cdac`); M5 milestone record added (`0b6c61a`);
   owner-verdict table consolidated below. ADR status sweep result: all
   15 ADRs carry `- Status: accepted (2026-10-27, owner approval)` in
-  the file and the index — M5's engine/offsite/restore clarifications
-  deliberately stay **PROPOSAL** sections in
-  `docs/contracts/backup-recovery.md` until the verdicts land (no
-  unblessed ADR acceptance). Remaining: owner sign-off on R1–R8 +
-  T-505/T-507 ordering confirmation.
+  the file and the index. Remaining: T-505/T-507 ordering confirmation.
 - **T-507 Release engineering.** goreleaser or equivalent: versioned
   binaries, checksums, install-top.sh pinning, CHANGELOG. Deps: T-506.
   AC: install from release artifact on clean VM. Agent: core-go.
 - **T-508 v0 review + tag.** Approval: **owner.** Agent: review.
-
-## Post-v0 candidates (not scheduled)
-
-- **T-601 MCP server** (`topctl mcp serve`): tool boundary ADR first (ADR-0011).
-- **T-602 External secret provider integration** (Vault first): provider
-  implementation behind the `SecretProvider` interface from T-107 +
-  rotation-via-version flow (ADR-0008, owner-directed direction).
-- **T-603 Application-data backup hooks** (ADR-0013 extension point).
-- **T-604 Gitea/GitLab webhook verifiers** (ADR-0003 interface).
-- **T-605 Alertmanager + Loki specs** (ADR-0010 extension points).
 
 ---
 
@@ -305,7 +268,7 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
 ---
 
 Post-v0 note: T-602 is unaffected by T-113; if ADR-0015 is accepted, more
-laws (ordering acyclicity, ledger invariants, restore safeguards) land in
+laws (ordering acyclicity, ledger invariants) land in
 M3–M5 review doc, never open at merge time.
 
 ## Upkeep (between milestones; spawned at owner request)
@@ -348,9 +311,8 @@ M3–M5 review doc, never open at merge time.
 ## Owner verdicts required — consolidated (T-506 sweep, 2026-11-03)
 
 One table for the owner pass (rule 3: verdicts land as ADR/contract
-amendments). R1–R4 are M4's list (docs/milestones/m4-review.md §4);
-R5–R8 are the M5 store/config/restore/CLI verdicts queued by the T-506
-sweep. Nothing is pre-blessed.
+amendments). R1–R4 are M4's list (docs/milestones/m4-review.md §4).
+Nothing is pre-blessed.
 
 | # | Question (one line) | Where the code/contract stands |
 | --- | --- | --- |
@@ -358,10 +320,6 @@ sweep. Nothing is pre-blessed.
 | R2 | Add `spec.storage[].readOnly` (read-only host binds for node-exporter/cAdvisor)? | **RESOLVED 2026-11-04: APPROVED** (fail-safe pre-adapter; WARN-op interim) — service-spec.md amended; implementation = T-412 |
 | R3 | Bless installer.md phase-5 wording fix ("bootstrapped controller loads the repo" → composition-root clause) + ADR-0005 amendment putting `adoptedByOp`/`firstRunOp` on the op record and naming `store.MarkManaged` | **RESOLVED 2026-11-04: APPROVED** — installer.md phase 5 + ADR-0005 amendment 2026-11-04 |
 | R4 | Bless the cli.md deploy-row amendment (the `core/top-controller` confirm-gated exception) | **RESOLVED 2026-11-04: APPROVED** — cli.md row finalised |
-| R5 | Controller scheduled backups: wire a daily-jobs seam into `internal/controller`, or accept caller-invoked-only v0 (`topctl backup` once R8 lands; manual/cron thereafter)? | Engine is caller-invoked; controller has NO backup calls today; contract's scheduling section is PROPOSAL (`backup-recovery.md:32–40`) |
-| R6 | Offsite: keep rsync-SSH (rclone config-known-but-unwired), and amend the store for the per-row marker `store.Backup.CopiedOffsiteAt` + `SetBackupCopiedOffsite` (goose migration)? | rsync-SSH shipped; metrics-only alarm surface; marker PROPOSED (`backup-recovery.md` §Offsite) |
-| R7 | Restore mechanics: bless (a) no operation record is inserted after a restore, (b) admission by file watermark+integrity (never registry copy-history), (c) safety snapshot as a real registered backup under `<backups>/safety/` | Code-true (`internal/recover/restore.go`); documented PROPOSAL (`backup-recovery.md` §Restore mechanics) |
-| R8 | Backup CLI verb wiring (`backup create/list/verify`/`prune`): land before v0 tag (T-507 slot) or post-v0? Today the verbs are notImpl stubs while the engine ships | Engine + README wiring plan verbatim (`internal/backup/README.md` §Wiring the CLI); t504-disk-pressure's scripted ENOSPC phase waits on it |
 
 Carried from M3/M4 (unchanged): T-399 upkeep candidates; the
 `topctl secrets` verb backlog; `topctl status` real drift view (or amend

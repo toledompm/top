@@ -14,7 +14,7 @@ M0 Architecture & plan ──► M1 Foundation ──► M2 Bootstrap & host lif
                                 M4 Self-managed core & observability
                                            │
                                            ▼
-                                M5 Backups, recovery, hardening  ──► v0
+                                M5 Operational hardening  ──► v0
                                            
                                 (post-v0: M6 MCP server — ADR-0011)
 ```
@@ -26,7 +26,7 @@ M0 Architecture & plan ──► M1 Foundation ──► M2 Bootstrap & host lif
 | [M2](m2-bootstrap-host-lifecycle.md) | Bootstrap & host lifecycle | doctor/install/uninstall, ledger, Dokku adapter (app CRUD) | install/uninstall on clean VM; foreign resources untouched |
 | [M3](m3-gitops-controller.md) | GitOps controller | GitSource, webhooks, spec→plan→apply, diff, history | change in Git lands on host; invalid spec rejected safely |
 | [M4](m4-self-managed-observability.md) | Self-managed core & observability | install script hands off to GitOps; prometheus/grafana as specs | webhook e2e; poll repairs missed webhook; TOP-down survival |
-| [M5](m5-backups-recovery-hardening.md) | Backups, recovery, hardening | backup schedule/verify/restore, recover suite, failure injection, docs | all 12 acceptance tests scripted & green |
+| [M5](m5-hardening.md) | Operational hardening | failure injection, docs completion, release engineering | all 10 acceptance tests scripted & green |
 
 ## Global rules
 

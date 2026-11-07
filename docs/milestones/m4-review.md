@@ -21,7 +21,7 @@ Task → commits (backlog §Milestone-4):
 | T-402 Adopt-bootstrap reconciliation | `fba65c4`, `82c7e30`, `145aa40` | reconciler adoption-aware controller-self posture; installer phases renumbered to contract 0–6 with phase 5 first-reconcile + `MarkManaged` handoff; 8 adopt tests incl. tier-1 real pipeline |
 | T-403 Observability wiring | `3ffd717`, `8d602b6` | template targets/datasource/provisioning entries + secret dash-kebab name; reconciler provisioning sync (`provision.go`, copy-sync) + `secretenv.go` dash-kebab mapping |
 | T-404 E2E change→webhook→converged; missed→poll | `6d487a3` | `test/e2e/t404-webhook-poll.sh` + hermetic `lib.sh`/`lib_test.go` (tier 1, runs every PR) |
-| T-405 E2E TOP-down survival | `39f104b` | `test/e2e/t405-survival.sh` (kill/revive, no-converge-while-down, poll backstop, zero-redeploy) |
+| T-405 E2E TOP-down survival | `39f104b` | kill/revive exercise (kill the controller, zero-redeploy fingerprint proof, poll backstop); the tier-3 restart-policy checks + a fleet live run carry it |
 | T-406 Self-deploy gated path | `59633a6`, `3c3b23d`, `6f2b972` | `RunInput.SelfDeployApproved` surgical field + validateRun actor guard; CLI `firstrun.go` phase-5 handoff + `deploy core/top-controller` confirm gate; README deltas |
 
 ## 1. Gate matrix (2026-11-03)
@@ -43,11 +43,11 @@ Per-package top-level test counts (from the `-race -v -count=1` run):
 | --- | --- | --- | --- | --- |
 | internal/backend/dokku | 81 | | internal/plan | 13 |
 | internal/cli | 51 | | internal/reconcile | 26 |
-| internal/config | 11 | | internal/recover | 19 |
-| internal/controller | 18 | | internal/secrets | 13 |
-| internal/doctor | 17 | | internal/spec | 14 |
-| internal/domain | 31 | | internal/store/sqlite | 16 |
-| internal/exec | 11 | | internal/webhook | 9 |
+| internal/config | 11 | | internal/secrets | 13 |
+| internal/controller | 18 | | internal/spec | 14 |
+| internal/doctor | 17 | | internal/store/sqlite | 16 |
+| internal/domain | 31 | | internal/webhook | 9 |
+| internal/exec | 11 |
 | internal/gitsource | 19 | | test/bridge | 7 |
 | internal/install | 43 | | test/e2e | 7 |
 | internal/inventory | 10 | | test/fakeexec | 5 |
@@ -70,7 +70,7 @@ no-claim discipline.
 | Installer phase 5 (first reconciliation adopts bootstrap deployment; ledger conversion `bootstrap-owned → managed`) | **DONE at tier 1/2** | `internal/install/adopt.go` (guard→`MarkManaged` flip:156→one `FirstRunner` pass); `adopt_test.go` 8 tests: handoff+one-run `TestInstallPhase5AdoptsAndRunsFirstReconcile`:90, idempotency `TestInstallAdoptionIdempotent`:159, no-spec→info + redo `TestInstallAdoptionNoSpecStaysBootstrapOwned`:214, non-green/handoff-error `TestInstallAdoptionFailureStops`:261 / `:303`, refusals `TestAdoptRefusalsDirect`:328, real pipeline `TestInstallAdoptionRealPipeline`:598 (proves exactly ONE controller `git:from-image` from phase 4, zero convergence verbs). Reconciler side: `internal/reconcile/adopt.go` `adoptedSelf` posture; `TestAdoptSelfNoRedeployWhenSpecMatches` |
 | Observability wiring: `top-internal` attachments, scrape config rendered from specs, Grafana admin via `secretRefs` | **DONE at tier 1** (VM scrape proof pending) | network attach in the reconciler field bundle (`apply.go` networks); targets wired: `TestTemplateObservabilityWiringIsFilled`:174 asserts the four alias targets (`…web:8080/9100/8080/3000`, :235–241) and datasource `http://observability-prometheus.web:9090` (:246); secretRef ≠ inline + dash-kebab rule: `TestTemplateGrafanaSecretRefNotInline`:142; reconciler mapping `internal/reconcile/secretenv.go` + `TestSecretEnvKeyDashKebabRule` (`provision_test.go`:196) |
 | Controller metrics dashboard JSON (provisioned) | **DONE** | `internal/install/platformrepo/observability/grafana-provisioning/` (provider.yaml + dashboards), synced into one provisioning tree per `TestTemplateObservabilityWiringIsFilledIs…` sanity (single-entry assertion :171–179) — dashboard RENDERING live is a soak/VM check |
-| E2E scripts for acceptance tests 2, 3, 4, 8 | **SCRIPTED; not live-run** | acceptance 3+4: `test/e2e/t404-webhook-poll.sh` (commit `6d487a3`); acceptance 8: `test/e2e/t405-survival.sh` (commit `39f104b`); acceptance 2 (install green, docs-verbatim) is the harness's precondition, not separately scripted — see open items §4 |
+| E2E scripts for acceptance tests 2, 3, 4, 8 | **SCRIPTED; not live-run** | acceptance 3+4: `test/e2e/t404-webhook-poll.sh` (commit `6d487a3`); acceptance 8: restart-policy checks in the tier-3 harness + the fleet live run (commit `39f104b`); acceptance 2 (install green, docs-verbatim) is the harness's precondition, not separately scripted — see open items §4 |
 
 ### Acceptance criteria (maps to global tests 2, 3, 4, 8)
 
@@ -78,14 +78,14 @@ no-claim discipline.
 | --- | --- | --- | --- |
 | 1 | Clean-VM install per public docs → `core` + `observability` reconciled green; Grafana reachable per routing mode | **PENDING live-run results — see soak/e2e run reports** | tier-1 composition guarantees exist (`TestInstallAdoptionRealPipeline`), but the clean-VM proof (and README verbatim check) must come from the run report |
 | 2 | Git change to an observability spec → webhook → converged; same via poll with webhook dropped | **SCRIPTED, PENDING live-run** | `test/e2e/t404-webhook-poll.sh` (actor=webhook op record + dokku deploy evidence + file:line drift origin; poll-repair with NO webhook evidence on the record). Tier-1 helpers green (`lib_test.go`, incl. the HMAC byte-equality with `internal/webhook.verify`:185). Handler math long-covered (`internal/webhook` 9 tests) |
-| 3 | `docker kill` controller + `dokku ps:stop`: Prometheus/Grafana/exporters/sample app keep running; controller returns (restart policy → `recover restart`); missed changes reconcile on return | **SCRIPTED, PENDING live-run** | `test/e2e/t405-survival.sh` (docker-name fingerprint stability ⇒ never re-ran `git:from-image`; adoption stays one-shot). `restartPolicy: always` asserting at spec level is documented (`platformrepo/README.md:93`) |
+| 3 | `docker kill` controller + `dokku ps:stop`: Prometheus/Grafana/exporters/sample app keep running; controller returns (restart policy, `dokku ps:restart` as backstop); missed changes reconcile on return | **PENDING live-run evidence** | restart-policy checks in the tier-3 harness + the fleet live run (docker-name fingerprint stability ⇒ never re-ran `git:from-image`; adoption stays one-shot). `restartPolicy: always` asserting at spec level is documented (`platformrepo/README.md:93`) |
 | 4 | `topctl status` shows drift on `core-top-controller` on spec-revision advance; `topctl deploy core/top-controller` applies it (human-gated) with old-release preservation | **PARTIAL — self-deploy path DONE at tier 1/2; `status` NOT delivered** | deploy: `SelfDeployApproved` guard `adopt_selfgate_test.go` (`TestSelfDeployApprovedHumanApplies`:56, `TestSelfDeployWithoutApprovalStaysReportOnly`:92, `TestSelfDeployApprovalNeedsManagedRow`:112, `TestSelfDeployRejectedForNonUserActor`:135); CLI gate matrix `deploy_self_test.go` (`TestDeploySelfHumanGateMatrix`:130: non-TTY→2-and-zero-verbs, `--confirm`→`git:from-image` `v2`+echoes, TTY `y` same; `TestDeploySelfFailureKeepsOldRelease`:179: verb fails→exit 3, nothing destructive). **`topctl status` remains the M1 validated stub** (`internal/cli/README.md:7`) — the drift-report half of this row is NOT satisfied by `status` (see deviations: `topctl diff` carries it today) |
 
 ### Failure scenarios (M4 §Failure scenarios — soak/VM proof pending all)
 
 | Scenario | Status | Note |
 | --- | --- | --- |
-| Grafana down ⇏ blindness (`recover diagnose` functional) | PENDING live-run | code shape supported (`recover` reads ledger/store, not Grafana) but unproven live |
+| Grafana down ⇏ blindness (`topctl doctor` functional) | PENDING live-run | code shape supported (doctor reads ledger/store, not Grafana) but unproven live |
 | Prometheus spec broken → contained reconcile failure, controller unaffected | PENDING live-run | per-service containment is tier-1-proven (`internal/reconcile` fake-backend outcome propagation) |
 | Controller self-deploy to broken image → checks fail, old controller keeps running, op failed | TIER-1-PROVEN shape; live pending | `TestDeploySelfFailureKeepsOldRelease`:179 (verb failure → exit 3, no destructive verb); real-Dokku failed-check preservation for ordinary apps is M3-proven (`TestE2EApplyFailingCheckPreservesOldRelease`), self-app variant pending VM |
 
@@ -161,7 +161,7 @@ turns each into one.
      (which IS confirm-gated per `internal/cli/README.md:129–138` and
      `stubs.go:431–433`). Needs a one-line, owner-blessed contract
      amendment (T-406's text-mode echo, exit-2 non-TTY row is the exact shape).
-5. **Run report so far**: adopt/t404/t405 reuseable scripts are SHIPPED
+5. **Run report so far**: adopt/t404 reuseable scripts are SHIPPED
    (`test/e2e/README.md:36–52` documents VM preconditions + env contract)
    but NOT live-run in this packet's scope — every row above marked
    pending alone on the run reports.
@@ -200,7 +200,7 @@ Owner decisions pending (add these to the decisions table when resolved):
   public docs on a clean VM): **RESOLVED 2026-11-04 (owner verdict)** —
   ACCEPT THE RUN REPORT as the artifact; NO t402-style script is
   committed. Rationale: scripts add no value here — the install-green
-  precondition is exercised live by every t404/t405/t504 fleet run, and
+  precondition is exercised live by every fleet run, and
   the live run report + gate matrix + the instrumented fleet scripts
   already cover the operational surface; a t402 script would duplicate
   the precondition without adding evidence.
@@ -213,7 +213,8 @@ limits are the planned knobs; rollback remains "scale down specs via Git"
 
 1. **Live e2e + soak run reports** — every row above marked "pending
    live-run results" closes here: clean-VM install (M4 acceptance 2),
-   webhook/poll convergence (3+4, `t404`), TOP-down survival (8, `t405`).
+   webhook/poll convergence (3+4, the fleet scripts), TOP-down survival (8,
+   the restart-policy checks + live run).
    These run in the concurrent session; DO NOT double-run against a
    shared VM.
 2. **Then the clean-VM double run** (M4 §Definition of done: acceptance
@@ -231,8 +232,8 @@ limits are the planned knobs; rollback remains "scale down specs via Git"
 - **R1–R4 APPROVED; carried M3 laws-CI decision RESOLVED (the laws job is
   REQUIRED); M4 acceptance 2 KEEP THE RUN REPORT as the artifact — no
   t402-style script is committed** (rationale: scripts add no value here;
-  the live run report + gate matrix + the instrumented t404/t405/t504
-  fleet scripts cover the operational surface; install-green is every
+  the live run report + gate matrix + the instrumented fleet scripts
+  cover the operational surface; install-green is every
   fleet run's precondition). Contract/ADR/workflow amendments landed
   2026-11-04; implementation tasks T-411 (`spec.args[]`) and T-412
   (`spec.storage[].readOnly`) queued in the backlog. R5–R8 and T-399
@@ -241,7 +242,7 @@ limits are the planned knobs; rollback remains "scale down specs via Git"
 ## Status addendum 2026-11-03 (orchestrator)
 
 - **Live fleet units 1–4 ran GREEN** (tier-3 8/8 + mutable-tag hook, install/
-  adoption invariant, `t404` webhook+poll, `t405` survival) in the disposable
+  adoption invariant, `t404` webhook+poll, kill/revive survival) in the disposable
   environment, with small adapter fixes committed per unit (see git log +
   commit `6d487a3`+ successors). Soak (unit 5) was still running when fleet
   work continued to M5 — **its closing report is a sign-off precondition for
@@ -249,5 +250,5 @@ limits are the planned knobs; rollback remains "scale down specs via Git"
 - The `t404` `diff clean` caveat persists by design: M3 secret-checksum gap
   + the `drifted(self)` human gate (already in §4).
 - M4 status: **code complete; soak evidence + R1–R4 owner verdicts pending.**
-  M5 (T-501..) opened 2026-11-03 per owner direction; M5 work shares the
+  M5 opened 2026-11-03 per owner direction; M5 work shares the
   disposable-environment budget, not the sign-off gate.

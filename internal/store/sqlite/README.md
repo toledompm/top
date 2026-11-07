@@ -62,7 +62,7 @@ writes — through one write-capable connection.
 
 - Migrations are plain-SQL goose files, embedded
   (`migrations/NNNN_*.sql`); they run inside a transaction per file and are
-  invoked from `Open` at controller start and by `topctl recover` paths
+  invoked from `Open` at controller start
   that open the DB (M5 wiring). Failure aborts startup loudly; there is no
   silent auto-rollback (forward-only, ADR-0007).
 - `SchemaVersionMax` in `open.go` MUST be bumped whenever a migration file
@@ -85,7 +85,7 @@ a silent downgrade and is deliberately impossible.
 | Constraint/existence clash | `domain.ErrConflict` | duplicate operation id, ledger `(kind,identifier)`, ledger entry duplication; `MarkManaged` on a pre-existing entry, identical-entity adoption |
 | Invalid lifecycle move | `domain.ErrConflict` | `UpdateOperationState` against the persisted state, per `domain.CanTransition` (terminal states reject further moves; skips too) |
 | Persistent writer contention | `domain.ErrLocked` | `SQLITE_BUSY`/`SQLITE_LOCKED` after `busy_timeout`; contested lease acquire/release — **holder identity is in the message** |
-| Corruption / open failure | `domain.ErrCorrupt` | ping failure, `SQLITE_CORRUPT`/`SQLITE_NOTADB`, unreadable JSON columns, `Check`'s `PRAGMA integrity_check` result. Never retried — surface `topctl recover diagnose` |
+| Corruption / open failure | `domain.ErrCorrupt` | ping failure, `SQLITE_CORRUPT`/`SQLITE_NOTADB`, unreadable JSON columns, `Check`'s `PRAGMA integrity_check` result. Never retried — surface the store-rebuild hint |
 | Missing | `domain.ErrNotFound` | not-yet-observed service, unknown operation, ledger entry |
 | Input validation | `domain.ErrInvalid` | empty ids, nil records, invalid enum values, a failed operation recorded without an error string |
 | Schema newer than build | `store.ErrSchemaNewer` | see Downgrade rule |

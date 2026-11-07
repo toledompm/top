@@ -78,7 +78,7 @@ quotas, or RBAC. Those words are banned from v0 docs in the Kubernetes sense.
 
 The namespace-as-prefix convention makes ownership detectable with plain
 `dokku apps:list` and `docker ps`, which the ownership safeguards (ADR-0009)
-and independent recovery path (ADR-0005) depend on. Ordering by namespace
+and the adoption/teardown paths (ADR-0005) depend on. Ordering by namespace
 gives us "platform before tenants" without a dependency engine; `dependsOn`
 inside a namespace handles the rare intra-namespace ordering need.
 

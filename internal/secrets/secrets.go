@@ -9,7 +9,7 @@
 //     A wrong-perms read is a loud, typed, fix-hinted error — never a
 //     silent success with reduced guarantees.
 //   - List() yields
-//     names + SHA-256 checksums + mtimes only (names manifest for recovery
+//     names + SHA-256 checksums + mtimes only (names manifest for re-provisioning
 //     runbooks, ADR-0013 boundary).
 package secrets
 
@@ -220,7 +220,7 @@ func (h *HostFile) Delete(name string) error {
 }
 
 // ManifestEntry describes one secret without revealing its value — the
-// names-only listing recovery runbooks consume (ADR-0007/0008).
+// names-only listing operators use to re-provision the store (ADR-0008).
 type ManifestEntry struct {
 	Name     string    `json:"name"`
 	Version  string    `json:"version"`

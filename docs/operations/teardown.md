@@ -24,7 +24,7 @@
 ```bash
 topctl uninstall --dry-run          # the full decision list, nothing touched
 topctl uninstall                    # removes TOP-managed apps + mounts
-topctl uninstall --purge-data       # + storage entries, <dataDir>, backups
+topctl uninstall --purge-data       # + storage entries, <dataDir>
 topctl uninstall --purge-secrets    # + secrets and git key material
 topctl uninstall --uninstall-dokku  # + Dokku itself (prints its manual runbook; see below)
 ```
@@ -38,7 +38,7 @@ topctl uninstall --purge-data --confirm
 ```
 
 A missing or unreadable store (`top.db`) means TOP can prove nothing and the
-command exits 1 (`nothing installed`) — `topctl recover diagnose` is the tool
+command exits 1 (`nothing installed`) — `topctl doctor` is the tool
 for that state.
 
 ## What uninstall actually does
@@ -82,7 +82,7 @@ yours.
 ## What remains afterwards (by design)
 
 - Without `--purge-data`: all workload data volumes, the `top-metadata`
-  storage entry, and TOP backups (`<dataDir>/backups/`).
+  storage entry, and the rest of the data dir.
 - Without `--purge-secrets`: `<dataDir>/secrets/` and `<dataDir>/git/`
   (deploy key, known_hosts).
 - Whatever Dokku's own uninstaller leaves (listed above; TOP reports it

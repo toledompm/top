@@ -1,101 +1,74 @@
 # Backups
 
-> Status: **v0 — operator-managed.** In v0, TOP ships no backup scheduler,
-> no `topctl backup` CLI verbs, and no offsite wiring. Backups of TOP's
-> own metadata are run by the operator using the recipe below. The
-> `internal/backup` engine (create/verify/prune + the rsync/SSH offsite
-> copy, `internal/backup/README.md`) is implemented and tested as an
-> internal library building toward post-v0 scheduling/CLI/offsite —
-> nothing in v0 calls it. Scope decisions: ADR-0007 (mechanism, v0
-> scope) and ADR-0013 (boundary).
+Scope: ADR-0013 (boundary) and ADR-0007 (TOP's SQLite state). Backups are
+the operator's job: TOP ships no backup machinery — no scheduler, no CLI
+verbs, no off-host copy wiring.
 
 ## The one-line boundary
 
-**TOP backs up TOP.** The backups cover TOP's metadata — platform state,
-operation/deployment history, resource ledger — and *not* your
-applications' data (volumes, databases). Application data needs its own
-strategy (see the cookbook below).
+**Your apps' data is yours.** TOP itself needs no restore ritual: its own
+metadata (the SQLite `top.db`) is reconstructible by re-running operations
+(`topctl install` + reconcile, which is idempotent). The recipes below are
+the operator's insurance against losing the battle history recorded there —
+operation/deployment records, the resource ledger, checkpoints — which is
+convenient to have but not load-bearing.
 
-## What is backed up
+## What exists where
 
-| Included | Excluded |
+| Location | Contents |
 | --- | --- |
-| SQLite DB (`top.db`) via consistent online backup | Secret values (`/var/lib/top/secrets/`) — names + checksums manifest only |
-| Backup registry + watermarks | Git credentials (re-provisioned per runbook) |
-| (Redacted) config | Application volumes/databases |
+| `/var/lib/top/top.db` (Dokku storage mount `top-metadata`) | TOP's SQLite metadata (no secret values — ADR-0008) |
+| `/var/lib/top/secrets/` | Secret values (re-provision out-of-band; names + checksums only) |
+| `/var/lib/top/secrets/git/` | Git read-only deploy key (re-provision per the runbook) |
+| Application volumes / databases | The operator's app-level backups |
 
-## The v0 operator recipe
+## The operator recipe (TOP's metadata)
 
-Everything you need is SQLite tooling on the host. Both steps come
-straight from the engine's documented mechanics, so a post-v0 wiring
-lands on the same shape.
+Everything you need is SQLite tooling on the host.
 
-1. **Snapshot** (consistent, WAL-safe — never a raw `cp` of the live
-   file, ADR-0007):
+1. **Snapshot** (consistent, WAL-safe — never a raw `cp` of the live file):
 
    ```console
-   $ sqlite3 /var/lib/top/top.db "VACUUM INTO '/var/lib/top/backups/top-<timestamp>.db'"
+   $ sqlite3 /var/lib/top/top.db "VACUUM INTO '/backups/top/top-<timestamp>.db'"
    ```
 
    `VACUUM INTO` produces a fully-compacted, consistent copy taken
    against a read transaction; it is safe while the controller is up
-   (take extra care to quiesce nothing — WAL guarantees the snapshot).
-   Rotate the timestamp yourself; the backup directory is append-only by
-   convention — never overwrite a previous backup file.
+   (WAL guarantees the snapshot). Rotate the timestamp yourself; keep the
+   destination append-only by convention — never overwrite a previous
+   backup file.
 
-2. **Prune** (the ADR-0007 retention policy: keep the newest backup per
-   distinct day for **14 days**, then the newest per distinct ISO week
-   from the remainder for **8 weeks**; the newest backup always
-   survives). Delete oldest files first, oldest-survivor rule: anything
-   older than both the 14-day daily window and the 8-week weekly window
-   can go. The exact algorithm (which the pruning wave reuses verbatim)
-   is documented in `internal/backup/prune.go` and
-   `internal/backup/README.md` §"Retention algorithm".
+2. **Prune** (a plain retention policy suggestion: keep the newest backup
+   per distinct day for **14 days**, then the newest per distinct ISO week
+   from the remainder for **8 weeks**; the newest backup always survives).
+   A dozen lines of `find`/`stat` in the operator's toolbag — TOP imposes
+   no pruning.
 
-3. **Off-host copy (your transport, v0)**: an rsync/SSH copy of the new
-   backup file to a host of your choice is the lifeline
-   `topctl recover restore` accepts (`user@host:path`), so drill the
-   restore from the remote side at least once.
+3. **Off-host copy (your transport)**: rsync/SSH to a host of your choice
+   is the strongest habit for one host; a copy elsewhere is what turns a
+   disk failure into an inconvenience.
 
 ## Verify a snapshot
 
-A snapshot is trustworthy only after verification. Open the copy
-strictly read-only and check integrity plus watermark presence:
+Open the copy strictly read-only and check integrity:
 
 ```console
-$ sqlite3 'file:/var/lib/top/backups/top-<timestamp>.db?mode=ro' \
+$ sqlite3 'file:/backups/top/top-<timestamp>.db?mode=ro' \
     'PRAGMA integrity_check;'
 ```
 
-`PRAGMA integrity_check` must answer `ok`, and the copy must contain the
-operation rows it should (its watermark — the newest operation ID at
-snapshot time — is the reference point `topctl recover restore`
-admission-checks). The engine's `Verify` performs exactly this plus the
-registry stamping, for when that wiring lands.
+`PRAGMA integrity_check` must answer `ok`.
 
 ## Restoring
 
-[`recovery.md`](recovery.md) — `topctl recover restore` **is** real
-(M5/T-503): it follows the ADR-0007 safeguard order, refuses to overwrite
-a newer database without `--force`, snapshots the current DB first, and
-also accepts `user@host:path` to pull the offsite lifeline first.
+Drop the snapshot in place (with the controller stopped —
+`dokku ps:stop core-top-controller`), start the controller afterward
+(`dokku ps:restart`), and let reconcile converge from whatever the
+operations re-run to. If the copy is older than the live DB's newest
+recorded operation, the re-run rebuilds the missing slice — reconcile is
+idempotent, so the result converges on current Git state either way.
 
-## Engine reference (library only in v0)
-
-The `internal/backup` package implements the BackupProvider contract as
-a tested library: `Engine.Create` (`VACUUM INTO`, watermark = newest
-operation ID, append-only directory), `Verify` (read-only integrity +
-watermark check, registry result stamped always), `Plan`/`Prune` (pure
-consent artifact + destructive apply per `backup.Policy{KeepDaily: 14,
-KeepWeekly: 8}`), and `Offsite.Copy`/`Offsite.Pull` (one rsync
-invocation syncing one file; failure alarms but never fails the local
-backup). Metrics (`top_backup_last_success_timestamp`,
-`top_backup_last_verify_result`, …) are emitted by the engine when it
-runs — which, again, no v0 component does. See
-`internal/backup/README.md` for the API and the post-v0 composition
-plan.
-
-## Application-data cookbook (not automated in v0)
+## Application-data cookbook (operator's, unautomated)
 
 - Per-app database dumps as ordinary TOP-managed cron workloads writing to a
   mounted volume you snapshot at the host level.

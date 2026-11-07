@@ -16,7 +16,7 @@
 //     error is a typed timeout wrapping context.Canceled.
 //   - env hygiene: by default the child gets a minimal, explicit environment
 //     (DefaultEnvPassthrough plus ExtraEnv), never the parent env wholesale.
-//     EnvInheritAll is the opt-in escape hatch for recovery-mode CLI use.
+//     EnvInheritAll is the opt-in escape hatch for bespoke CLI use.
 //   - redaction: registered secret values (RedactSeed) are replaced with
 //     "***" in both captured buffers before they are returned and inside
 //     every error string this package produces (ADR-0008: no secret value
@@ -105,7 +105,7 @@ type FastExec struct {
 	ExtraEnv []string
 
 	// EnvInheritAll gives the child this process' whole environment plus
-	// ExtraEnv. Opt-in only, for recovery-mode CLI use — never the
+	// ExtraEnv. Opt-in only, for bespoke CLI use — never the
 	// reconciler's steady-state path.
 	EnvInheritAll bool
 

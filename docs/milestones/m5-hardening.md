@@ -1,33 +1,24 @@
-# Milestone 5 — Backups, recovery, and operational hardening
+# Milestone 5 — Operational hardening
 
-> ## M5 record (T-506, 2026-11-03, **pre-owner sign-off**)
+> ## M5 record (T-506, 2026-11-03)
 >
-> Code landed (backlog §Milestone-5, all tiers-1..4 as marked):
-> T-501 backup engine (`98ac1f7`, `d1af6f0` — create/verify/prune +
-> registry + metrics), T-502 offsite (`58405d3`, `2905fcd` — rsync/SSH
-> copy, alarm-not-fail), T-503 recover suite (`7e7dead`,
-> `7d45808` — `Offsite.Pull` + restore with the verbatim ADR-0007
-> safeguard order + CLI wiring), T-504 failure-injection pack
-> (`8484589`..`939e588` — kill-mid-deploy, wedged DB, disk pressure,
-> reboot; tier-4 scripts + hermetic shards). T-505 (fresh-eyes run) and
-> T-507 (release engineering) follow T-506. **Status: docs-complete
-> sweep executed; owner verdicts R1–R8 (consolidated in the backlog)
-> and live-run evidence pending — nothing here is a claim that AC rows
-> are green against a real VM.** Known doc-accurate gaps at this
-> snapshot: `topctl backup` verbs are notImpl stubs (R8 wiring);
-> controller has no scheduled-backup jobs seam (R5); offsite per-row
-> registry marker is a proposal (R6); restore mechanics proposals R7.
+> T-504 failure-injection pack (`8484589`..`939e588` — kill-mid-deploy,
+> reboot; tier-4 scripts). T-505 (fresh-eyes run) and T-507 (release
+> engineering) follow T-506. **Status: live-run evidence pending — nothing
+> here is a claim that AC rows are green against a real VM.**
 
 ## Objective & scope
 
-Make the platform survivable and the operations boring: automated verified
-metadata backups, the full `topctl recover` suite, failure-injection coverage of
-the 12 acceptance tests, and complete public documentation.
+Make the platform survivable and the operations boring: failure-injection
+coverage of the failure matrix, complete public documentation, and release
+engineering. Backups are the operator's job (ADR-0013): the runbook carries
+the operator recipe, and revival is Dokku-side (restart policy, `dokku
+ps:restart`, re-running the installer).
 
 ## Non-goals
 
 - Application-data backup automation (ADR-0013 boundary; cookbook only).
-- Off-host backup destination *implementation* beyond one rsync/SSH target.
+- TOP-side backup or restore machinery of any kind.
 
 ## Prerequisites
 
@@ -35,37 +26,31 @@ the 12 acceptance tests, and complete public documentation.
 
 ## Deliverables
 
-- `internal/backup`: scheduled create/verify/prune, offsite copy, registry,
-  metrics (ADR-0007, backup-recovery contract).
-- `internal/recover` complete: diagnose / restart / redeploy / restore with
-  all safeguards (watermark compare, safety snapshot, migration-forward).
-- Failure-injection scripts for acceptance tests 7, 9, 10, 12 (and re-run of
-  the whole matrix).
-- Docs completion: installation, recovery, backups, teardown, observability,
-  troubleshooting; README quick-start re-verified; ADR statuses → accepted.
+- Failure-injection scripts for the failure matrix (and re-runs thereof).
+- Docs completion: installation, revival, backups (operator recipe),
+  teardown, observability, troubleshooting; README quick-start re-verified;
+  ADR statuses → accepted.
 - Release engineering: versioned binary releases, checksums, install script
   pinning; contributor docs (how to run tiers 1–4).
 
-## Acceptance criteria (maps to global tests 7, 9, 10, 12)
+## Acceptance criteria (maps to global tests 7, 8, 10)
 
 - [ ] Mid-deploy controller kill → resume/re-diff with consistent state.
-- [ ] `recover diagnose` identifies each injected fault from the matrix
-      (wedged DB, dead controller, full disk, bad config) with correct hints.
-- [ ] Backup → damage DB → `recover restore` → platform back, watermark
-      safeguards proven (restore over newer DB refused without `--force`).
-- [ ] A contributor following only public docs installs, reconciles, breaks,
-      recovers, backs up, restores, and uninstalls on a clean VM (fresh-eyes
-      run; findings fixed).
+- [ ] The failure matrix runs against a real VM: every injection exits
+      loud, states stay consistent, and revival needs no TOP-side verbs
+      (restart policy / `dokku ps:restart` / installer re-run).
+- [ ] A contributor following only public docs installs, reconciles,
+      breaks, revives, and uninstalls on a clean VM (fresh-eyes run;
+      findings fixed).
 
 ## Failure scenarios
 
-- Offsite copy failure → alarmed but local backup intact.
-- Restore onto schema-newer DB → refused with clear message.
-- Backup while reconciling → consistent snapshot (lease-aware timing).
+- Corrupt SQLite on upgrades → typed error rows, controller exits loud,
+  rebuild path documented (`install` + reconcile, idempotent).
 
 ## Documentation
 
-- This milestone *is* largely documentation; DoD includes a docs-completeness
+- This milestone *is* largely documentation; DoD includes a doc-completeness
   checklist against every contract and runbook.
 
 ## Risks & rollback
@@ -74,4 +59,4 @@ the 12 acceptance tests, and complete public documentation.
 
 ## Definition of done
 
-All 12 acceptance tests scripted and green; docs complete; v0 tagged.
+All 10 acceptance tests scripted and green; docs complete; v0 tagged.

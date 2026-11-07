@@ -10,23 +10,17 @@ Persistence for TOP metadata. One implementation in v0: SQLite
 - Record **observed state** per service: last-known Dokku-reported status,
   revision, health, timestamps.
 - Track **operations** (append-only): `OperationID`, `kind` (`install`,
-  `reconcile`, `deploy`, `backup`, `restore`, `uninstall`, …), `state`
+  `reconcile`, `deploy`, `uninstall`, …), `state`
   (`pending|running|succeeded|failed|aborted`), `actor`, `correlationID`,
   `startedAt/finishedAt`, redacted `error`, structured `details` (JSON).
 - Track **reconciliation checkpoints**: last fully-applied revision, per-
-  service applied revision, last-known-good revision (for rollback/recovery).
+  service applied revision, last-known-good revision (for rollback).
 - **Webhook delivery dedup**: `deliveries(deliveryID PK, receivedAt)` —
   `INSERT OR IGNORE`; zero rows = duplicate.
 - **Resource ledger** (ADR-0009): every host resource TOP created
   (`kind`, `identifier`, `labels`, `createdBy operation`).
-- **Backup registry**: backup files, size, watermark (newest operation ID
-  included), verification status/result. Registry maintenance verbs:
-  `InsertBackup`, `ListBackups`, `SetBackupVerified`, and (retention/
-  prune, M5) `RemoveBackup` — the engine deletes the file first, then the
-  row, so no row is ever present for a missing file.
 - **Serialization lease**: `leases(name PK, holderID, expiresAt)` for the
-  single-writer reconcile lock and for CLI-vs-controller mutual exclusion
-  during restore.
+  single-writer reconcile lock and for CLI-vs-controller mutual exclusion.
 
 ## Error semantics
 
@@ -34,8 +28,9 @@ Persistence for TOP metadata. One implementation in v0: SQLite
 - `busy_timeout` handles transient writer contention (ADR-0007); persistent
   `SQLITE_BUSY` after timeout → `ErrLocked` with holder identity in the
   message.
-- Corruption/open failure → `ErrCorrupt`; callers must surface
-  "run `topctl recover diagnose`" rather than retrying.
+- Corruption/open failure → `ErrCorrupt`; callers surface the
+  reconstruct-the-store hint ("wipe the state file and re-run
+  `topctl install`; reconcile is idempotent") rather than retrying.
 
 ## Migration expectations
 

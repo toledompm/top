@@ -1,7 +1,7 @@
 # internal/exec/exectest
 
 The test double for `internal/exec`'s `Runner` — THE seam every adapter task
-(`backend/dokku`, `gitsource`, `install`, `recover`) uses to test command
+(`backend/dokku`, `gitsource`, `install`) uses to test command
 behavior without spawning real processes. See `../README.md` for the
 production side and the invariants (argv-only, redaction, env hygiene).
 

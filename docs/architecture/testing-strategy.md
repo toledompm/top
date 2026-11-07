@@ -20,11 +20,11 @@ Decision record: ADR-0012. This page is the operational how-to.
 | Failing healthcheck | image with dead /health | op `failed`, old release still serving, `logs:failed` surfaced |
 | Webhook storm | 50 duplicate + 5 out-of-order deliveries | dedup → 1 coalesced run; newest sha wins |
 | Git outage | block repo network | run aborts pre-mutation; workloads untouched; poll recovers |
-| SQLite wedged | `chmod 000` DB dir | controller exits loud; `recover diagnose` names it; fix + restart recovers |
-| Disk pressure | fill to 95% in VM | preflight/backup report clear errors; no silent corruption |
+| SQLite wedged | `chmod 000` DB dir | controller exits loud with a typed error; fix + restart recovers; reconcile re-drives convergence |
+| Disk pressure | fill to 95% in VM | preflight and store operations report clear errors; no silent corruption |
 | Host reboot (tier 4) | VM reboot | Dokku `ps:restore` revives apps + controller; TOP resumes polling |
 
-## The 12 acceptance tests (mapped)
+## The 10 acceptance tests (mapped)
 
 | # | Test | Tier | Milestone |
 | --- | --- | --- | --- |
@@ -35,11 +35,9 @@ Decision record: ADR-0012. This page is the operational how-to.
 | 5 | Manual `diff`/`reconcile` | 3 + 4 | M3 |
 | 6 | Invalid spec + failed deploy safety | 1 (validation) + 4 | M3 |
 | 7 | Controller restart mid-operation | 4 | M5 |
-| 8 | TOP broken → workloads + monitoring survive | 4 | M4 |
-| 9 | Independent recovery path | 4 | M5 |
-| 10 | Backup + restore metadata | 4 | M5 |
-| 11 | Uninstall spares unrelated resources | 4 (pre-seeded foreign container) | M2/M5 |
-| 12 | Clean-environment contributor run | 4 on a fresh Lima VM, docs-only | M5 |
+| 8 | TOP broken → workloads + monitoring survive | 4 (also restart-policy checks in the tier-3 harness + a fleet live run) | M4 |
+| 9 | Uninstall spares unrelated resources | 4 (pre-seeded foreign container) | M2/M5 |
+| 10 | Clean-environment contributor run | 4 on a fresh Lima VM, docs-only | M5 |
 
 ## Local (author-only) testing
 

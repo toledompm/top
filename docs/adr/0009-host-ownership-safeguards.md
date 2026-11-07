@@ -54,8 +54,8 @@ destructive e2e to disposable hosts by default). There is no single
 "yes-to-everything" switch: each destructive tier keeps its own flag.
 Gated operations:
 Dokku install/uninstall; deleting any volume or storage dir; firewall/proxy
-changes; touching any resource not in the ledger; restoring a backup over
-existing state; `topctl uninstall`; `--prune` deletions. Where the operator is
+changes; touching any resource not in the ledger; overwriting the SQLite
+state file; `topctl uninstall`; `--prune` deletions. Where the operator is
 not root, TOP prints exact `sudo` commands rather than attempting escalation —
 it must never assume passwordless sudo.
 
