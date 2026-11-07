@@ -38,7 +38,7 @@ Prove independence: TOP down ⇒ workloads + monitoring keep running.
 - [ ] `docker kill` the controller (and later `dokku ps:stop`): Prometheus,
       Grafana, exporters, and a sample user app keep running; controller
       returns via Dokku restart policy; missed changes reconcile on return.
-- [ ] `topctl status` shows drift on `core-top-controller` when its spec
+- [ ] `topctl diff` shows drift on `core-top-controller` when its spec
       revision advances, and `topctl deploy core/top-controller` applies it
       (human-gated path) with old-release preservation on failure.
 

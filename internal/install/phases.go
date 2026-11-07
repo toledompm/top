@@ -232,7 +232,7 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 	}
 
 	res.NextCommands = []string{
-		"topctl status",
+		"topctl diff",
 		"topctl doctor",
 	}
 	res.Resumed = len(res.PhasesSkipped) > 0

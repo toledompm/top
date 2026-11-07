@@ -214,27 +214,6 @@ func (c *cctx) installExit(cmd *cobra.Command, res *install.Result, err error) e
 	}
 }
 
-// newStatusCmd — read-only stub.
-func newStatusCmd(c *cctx) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Per-service revision, state, health, and last operation",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if ns := flagString(cmd, "namespace"); ns != "" {
-				if err := domain.ValidNamespace(ns); err != nil {
-					return c.usageErr(cmd, "--namespace: "+err.Error())
-				}
-			}
-			// --watch is accepted but meaningless on a stub; never sleep.
-			return c.notImpl(cmd, false)
-		},
-	}
-	cmd.Flags().String("namespace", "", "restrict output to one TOP namespace")
-	cmd.Flags().Bool("watch", false, "stream status updates until interrupted")
-	return cmd
-}
-
 // newDiffCmd — REAL (T-309): read-only computed diff over the resolved
 // platform-repo revision (zero side effects: no lease, no store write —
 // the store opens only when <dataDir>/top.db already exists, and only for
@@ -660,7 +639,7 @@ func readinessHints(ref string, rd backend.Readiness) []string {
 		hints = append(hints, "a deploy build is still in flight; re-run `topctl logs` once it finishes")
 	}
 	if rd.Deployed && rd.Running && !rd.Checks {
-		hints = append(hints, "processes run but health checks fail — inspect the spec's checks (`topctl status` / reconciler plan)")
+		hints = append(hints, "processes run but health checks fail — inspect the spec's checks (`topctl diff` / reconciler plan)")
 	}
 	return hints
 }

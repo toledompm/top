@@ -160,8 +160,7 @@ next steps.
   reconcile; ADR-0003). Webhooks are an optimization, never a requirement.
 - Watch it converge: once the controller is reconciling, `topctl diff`
   (exit 0 = converged, 1 = drift present) and `topctl history` show the
-  per-service state; `topctl status` is still an honest stub (`topctl
-  diff` is the real drift surface today).
+  per-service state.
 
 Exit codes (CLI contract): 0 ok; 1 preflight/diagnose findings; 2 usage; 3
 gate/sudo refusal or phase failure; 4 store/backend unavailability.

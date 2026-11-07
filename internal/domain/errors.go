@@ -44,7 +44,7 @@ type NotFoundError struct {
 
 // NewNotFound builds a NotFoundError with a standard hint.
 func NewNotFound(kind, ref string) error {
-	return NotFoundError{Kind: kind, Ref: ref, Hint: "check `topctl status`; the entity may never have been created"}
+	return NotFoundError{Kind: kind, Ref: ref, Hint: "check `topctl history`; the entity may never have been created"}
 }
 
 func (e NotFoundError) Error() string {

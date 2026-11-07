@@ -98,34 +98,6 @@ func TestExitCodeContract(t *testing.T) {
 	}
 }
 
-// TestStubEnvelopesAreVersioned: every remaining stub prints the versioned
-// envelope with the right command field; -o json output parses and carries
-// schemaVersion=1 + "not implemented" message. The untouched stubs keep
-// the exact same discipline.
-func TestStubEnvelopesAreVersioned(t *testing.T) {
-	t.Parallel()
-	for _, cmd := range []string{"status"} {
-		args := strings.Fields(cmd)
-		outS, _, code := runCLI(t, false, "", append(args, "-o", "json")...)
-		if code != ExitOK {
-			t.Fatalf("%s -o json: exit %d, want 0", cmd, code)
-		}
-		var env Envelope
-		if err := json.Unmarshal([]byte(outS), &env); err != nil {
-			t.Fatalf("%s -o json: not one JSON object: %q: %v", cmd, outS, err)
-		}
-		if env.SchemaVersion != JSONSchemaVersion {
-			t.Errorf("%s: schemaVersion = %d, want %d", cmd, env.SchemaVersion, JSONSchemaVersion)
-		}
-		if env.Command != cmd {
-			t.Errorf("%s: command = %q", cmd, env.Command)
-		}
-		if env.Message != notImplementedOp {
-			t.Errorf("%s: message = %q, want %q", cmd, env.Message, notImplementedOp)
-		}
-	}
-}
-
 // TestVersionEnvelope: `topctl version` is real in M1 (build info + floors).
 func TestVersionEnvelope(t *testing.T) {
 	t.Parallel()

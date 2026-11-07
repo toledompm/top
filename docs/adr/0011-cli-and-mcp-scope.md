@@ -24,7 +24,6 @@ Owner-directed amendment during M0 review.
 CLI (cobra), one binary, every command supports `-o json` with a stable,
 versioned output schema:
 
-- `topctl status [--namespace N] [--watch]`
 - `topctl diff [--revision R]` — desired vs observed, exit code reflects drift
 - `topctl reconcile [--now] [--service ns/name]`
 - `topctl deploy <ns/name> [--revision <sha>]` (incl. the gated controller

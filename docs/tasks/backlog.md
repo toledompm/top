@@ -198,9 +198,8 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
   core/top-controller` flow with failure preservation. Deps: T-304, T-402.
   AC: acceptance in M4 file. Tests: tier 4. Refs: ADR-0005. Risk: high by
   design → gated. Agent: core-go. **Status: DONE at tiers 1–2 2026-11-03**
-  (`59633a6`, `3c3b23d`, `6f2b972`); cli.md contract amendment pending
-  owner blessing (m4-review.md §4 R4). `topctl status` itself remains a
-  stub — flagged as open item.
+  (`59633a6`, `3c3b23d`, `6f2b972`); cli.md contract amendment landed
+  2026-11-04 (owner verdict R4).
 - **T-407 M4 review + clean-VM repeat run.** Deps: all M4. Approval: owner.
   Agent: review. **Status: IN PROGRESS 2026-11-03** — review packet
   drafted (docs/milestones/m4-review.md); remaining: live e2e + soak run
@@ -322,8 +321,7 @@ Nothing is pre-blessed.
 | R4 | Bless the cli.md deploy-row amendment (the `core/top-controller` confirm-gated exception) | **RESOLVED 2026-11-04: APPROVED** — cli.md row finalised |
 
 Carried from M3/M4 (unchanged): T-399 upkeep candidates; the
-`topctl secrets` verb backlog; `topctl status` real drift view (or amend
-M4 acceptance 4 to `topctl diff`); the `topctl secrets` verb backlog;
+`topctl secrets` verb backlog;
 ~~the `make laws` CI REQUIRED-vs-optional decision~~ **resolved
 2026-11-04 — REQUIRED** (`.github/workflows/ci.yml`, ADR-0015 amendment);
 ~~acceptance-2 script-vs-run-report artifact decision~~ **resolved

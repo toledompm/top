@@ -2,7 +2,7 @@ package domain
 
 import "fmt"
 
-// ServiceStatus is the health/status summary shown by `topctl status` and
+// ServiceStatus is the health/status summary carried in domain surfaces
 // exported as `top_service_*` metric labels — a stable vocabulary shared by
 // CLI and metrics (ADR-0010, ADR-0011).
 type ServiceStatus string
@@ -44,7 +44,7 @@ func ParseServiceStatus(s string) (ServiceStatus, error) {
 	return st, nil
 }
 
-// BackendStatus is TOP's view of the backend itself (`topctl status`).
+// BackendStatus is TOP's view of the backend itself
 type BackendStatus string
 
 const (

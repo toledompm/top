@@ -66,7 +66,7 @@ func NewRoot(opts Options) *cobra.Command {
 		newVersionCmd(c),
 		newDoctorCmd(c),
 		newInstallCmd(c),
-		newStatusCmd(c),
+		newDiffCmd(c),
 		newDiffCmd(c),
 		newReconcileCmd(c),
 		newDeployCmd(c),

@@ -32,10 +32,6 @@ const (
 // ParseFormat; callers wrap it in an ExitError{ExitUsage} via render.go.
 var ErrUsage = errors.New("usage error")
 
-// notImplementedOp is the shared stub notice. Honest on purpose: it says
-// what the command would do and when the capability lands (M2/M3).
-const notImplementedOp = "not implemented: planned M2/M3"
-
 // errAs is a thin errors.As alias kept so the nerve center of exit-code
 // mapping reads without importing errors twice in each file.
 func errAs(err error, target any) bool { return errors.As(err, target) }

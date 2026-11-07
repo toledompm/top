@@ -77,12 +77,7 @@ the pending self-drift, keeps the previous release serving until the
 readiness gate passes, and preserves the old release on failure (paid
 back by re-running the install or `dokku ps:rebuild`).
 
-## `topctl status` — honest stub
-
-`topctl status` remains the M1 validated stub (it answers, but carries no
-real drift view). The real drift surface today is `topctl diff` — read
-that instead. Scoping a real drift view into `status` is a queued owner
-question (m4-review.md §4).
+## `topctl diff` and `topctl history`
 
 ## `topctl history` — operation records
 

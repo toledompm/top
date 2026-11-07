@@ -89,22 +89,6 @@ func (c *cctx) emitOk(cmd *cobra.Command, msg string, data map[string]any) error
 	return nil
 }
 
-// notImpl renders the honest-stub response. Read-only stubs exit 0: they
-// truthfully did no work and nothing failed. Mutating stubs exit 3
-// ("operation failed" in the contract — the operation cannot succeed
-// today), never 2: the invocation was well-formed; the gap is in the
-// tool. See internal/cli/README.md for the rationale.
-func (c *cctx) notImpl(cmd *cobra.Command, mutating bool) error {
-	if mutating {
-		if err := c.emitErrCode(cmd, "not-implemented", ExitFailed,
-			notImplementedOp+"; this command mutates the host and gets real backing in M2/M3"); err != nil {
-			return err
-		}
-		return &ExitError{Code: ExitFailed}
-	}
-	return c.emitOk(cmd, notImplementedOp, nil)
-}
-
 // usageErr renders a validation failure: error envelope on stderr, code
 // "usage", exit 2, with a help hint so agents can self-correct.
 func (c *cctx) usageErr(cmd *cobra.Command, msg string) error {
