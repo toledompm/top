@@ -133,7 +133,7 @@ func (c *cctx) emitErrCode(cmd *cobra.Command, code string, exitCode int, msg st
 }
 
 // invocation renders the contract "command" field: "status",
-// "backup create", "recover restart" — the command path without the
+// "reconcile diff" — the command path without the
 // binary name, so it survives any future rename of the binary.
 func invocation(cmd *cobra.Command) string {
 	root := cmd.Root().Name()

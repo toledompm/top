@@ -2,13 +2,12 @@
 
 The complete `topctl` command tree (docs/contracts/cli.md, ADR-0011).
 Introduced in Milestone 1 as **validated stubs**, most bodies are real
-after M2/M3 (doctor, install, uninstall, recover, logs, diff, reconcile,
+after M2/M3 (doctor, install, uninstall, logs, diff, reconcile,
 deploy, history, controller run — see the task notes in `cli_test.go`
-for who landed when). The commands that remain stubs (`status`, the
-`backup` group) still parse and validate flags and arguments, load TOP's
-runtime config via `internal/config`, honor the global flags, and print
-the versioned output envelope without touching the store or the exec
-layer (see "How stubs get replaced by M2/M3 service wiring" below).
+for who landed when). The command that remains a stub (`status`) still
+parses and validates flags and arguments, loads TOP's runtime config via
+`internal/config`, honors the global flags, and prints the versioned
+output envelope without touching the store or the exec layer.
 
 ## Layout
 
@@ -29,22 +28,19 @@ layer (see "How stubs get replaced by M2/M3 service wiring" below).
 ldflags-injected build stamp. `ExitError{Code}` carries the contract exit
 code through `RunE` into `Execute`'s single mapping point:
 
-- read-only stubs (status, backup list/verify) → **0** with the stub
+- the read-only stub (status) → **0** with the
   envelope (diff and history left the stub set in T-309 — diff is the
   read-only computed plan, history reads the operation ledger, both via
-  `reconcmd.go`; `recover diagnose` left in M2 — it now renders a real
-  internal/recover report in the doctor vocabulary, exit 0/1 like
-  doctor; `logs` left it in T-308 — real body + readiness compose, see
-  logs_test.go for its exit rows),
-- mutating stubs (backup create) → **3**
+  `reconcmd.go`; `logs` left it in T-308 — real body + readiness compose,
+  see logs_test.go for its exit rows),
+Mutating commands that fail after a well-formed invocation → **3**
   ("operation failed" in the contract code space: the invocation was
-  well formed, the operation cannot succeed today; 2 is reserved for the
-  caller's mistake),
+  well-formed, the operation cannot succeed (2 is reserved for the
+  caller's mistake).
 - invalid usage/validation → **2** with an error envelope and a
   `--help` hint,
-- ExitDrift (1) now HAS producers (`topctl doctor` failures and, since
-  M2, `topctl recover diagnose` failures; `topctl diff` drift is also 1
-  since T-309). ExitUnreachable (4) has producers too since T-308/309
+- ExitDrift (1) now HAS producers (`topctl doctor` failures;
+  `topctl diff` drift is also 1 since T-309). ExitUnreachable (4) has producers too since T-308/309
   (backend/store/git unavailability rows). The constants are the
   contract's single source of truth.
 
@@ -63,10 +59,9 @@ code `not-implemented` distinguishes it from a real M2-era failure.
 
 ## Confirmation scaffolding
 
-Gated commands (install, uninstall, backup create; reconcile requires it
-when `--prune` or `--include-controller` is set; recover
-restart/redeploy/restore are gated too — real in M2, same knot) call
-`cctx.requireConfirm`:
+Gated commands (install, uninstall; reconcile requires it when `--prune`
+or `--include-controller` is set; deploy is gated for the controller's
+own app) call `cctx.requireConfirm`:
 
 - `--confirm` → proceed (deterministic path for agents/CI, ADR-0009);
 - stdin is a TTY → interactive `y/N` prompt;
@@ -86,13 +81,11 @@ needed — see `TestConfirmPromptPaths`.
 - `--schema-version` — reserved: only the current `JSONSchemaVersion`
   (1) is accepted until negotiation has a second producer.
 
-## How stubs get replaced by M2/M3 service wiring
+## How service wiring replaces stubs
 
-(Remaining for the `backup` group; the already-real bodies below
-describe the pattern that replaces them.) Each command in `stubs.go` is
-a thin closure around `cctx` with exactly
+Each command in `stubs.go` is a thin closure around `cctx` with exactly
 three responsibilities left to add: construct the M2/M3 application
-service (store/backend/reconciler/recover), call it, and map typed
+service (store/backend/reconciler), call it, and map typed
 domain errors onto `ExitError` codes. The pieces that should *not*
 change are the flag surface, validation, envelope rendering, exit-code
 mapping, and the confirm knot — those are already contract-complete and
@@ -134,8 +127,8 @@ exists (reads never invent a store; absent state = honest empty), and
   confirm-gated (ADR-0005 human gate) — the run carries
   `RunInput.SelfDeployApproved`, the reconciler's only license to apply a
   revision change to its own deployment; the command echoes the
-  old-release preservation fact + `topctl recover redeploy` rollback
-  path. Non-TTY without `--confirm` → exit 2.
+  old-release preservation fact + the re-converge path (`topctl install`)
+  for a rollback. Non-TTY without `--confirm` → exit 2.
   Install also wires `Options.FirstRun` (firstrun.go): phase 5's
   reconciliation handoff — gitsource over the positional repo → strict
   spec load → adopt-aware reconcile run — mirroring internal/install's

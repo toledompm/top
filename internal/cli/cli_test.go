@@ -51,8 +51,6 @@ func TestExitCodeContract(t *testing.T) {
 		// logs is REAL since T-308 (its exit mapping lives in logs_test.go
 		// against the fake runner — a no-runner run would touch the real
 		// backend, so it keeps no row here).
-		{"backup-list", []string{"backup", "list"}, ExitOK},
-		{"backup-verify", []string{"backup", "verify"}, ExitOK},
 		{"version", []string{"version"}, ExitOK},
 
 		// T-205..T-208: `install`/`uninstall` bodies are real now (the
@@ -67,16 +65,11 @@ func TestExitCodeContract(t *testing.T) {
 		// reconcile/deploy got real bodies in T-309: the faked exit rows
 		// (happy/failed/lease/store) live in recon_test.go; the no-store
 		// reconcile row they replaced here would open a real pipeline.
-		{"backup-create-confirmed", []string{"backup", "create", "--confirm"}, ExitFailed},
-		// recover's four confirmed rows live in recover_test.go — the
-		// bodies are real (M2), pinned against a FakeRunner there.
 		{"controller-run", []string{"controller", "run"}, ExitUnreachable}, // real body (M4): the daemon's backend/store seam composition fails first without state
 
 		// confirm gate: gated command without --confirm, non-TTY → 2
 		{"install-no-confirm", []string{"install", "github.com/example/top"}, ExitUsage},
 		{"uninstall-no-confirm", []string{"uninstall"}, ExitUsage},
-		{"backup-create-no-confirm", []string{"backup", "create"}, ExitUsage},
-		// recover restart/redeploy/restore no-confirm rows → recover_test.go.
 		{"reconcile-prune-no-confirm", []string{"reconcile", "--prune"}, ExitUsage},
 		{"reconcile-include-controller-no-confirm", []string{"reconcile", "--include-controller"}, ExitUsage},
 
@@ -90,8 +83,6 @@ func TestExitCodeContract(t *testing.T) {
 		{"bad-output-format", []string{"status", "-o", "yaml"}, ExitUsage},
 		{"bad-redact", []string{"status", "--redact", "off"}, ExitUsage},
 		{"bad-schema-version", []string{"status", "--schema-version", "2"}, ExitUsage},
-		{"backup-no-subcommand", []string{"backup"}, ExitUsage},
-		{"recover-no-subcommand", []string{"recover"}, ExitUsage},
 		{"unknown-flag", []string{"status", "--wat"}, ExitUsage},
 		{"unknown-command", []string{"toplevel"}, ExitUsage},
 	}
@@ -109,12 +100,11 @@ func TestExitCodeContract(t *testing.T) {
 
 // TestStubEnvelopesAreVersioned: every remaining stub prints the versioned
 // envelope with the right command field; -o json output parses and carries
-// schemaVersion=1 + "not implemented" message. (recover diagnose left the
-// stub set in M2 — its envelope contract is in recover_test.go; the
-// untouched stubs keep the exact same discipline.)
+// schemaVersion=1 + "not implemented" message. The untouched stubs keep
+// the exact same discipline.
 func TestStubEnvelopesAreVersioned(t *testing.T) {
 	t.Parallel()
-	for _, cmd := range []string{"status", "backup list"} {
+	for _, cmd := range []string{"status"} {
 		args := strings.Fields(cmd)
 		outS, _, code := runCLI(t, false, "", append(args, "-o", "json")...)
 		if code != ExitOK {
@@ -165,10 +155,6 @@ func TestHelpMentionsTopctl(t *testing.T) {
 		{},
 		{"--help"},
 		{"status", "--help"},
-		{"backup", "--help"},
-		{"backup", "create", "--help"},
-		{"recover", "--help"},
-		{"recover", "restart", "--help"},
 		{"uninstall", "--help"},
 		{"no-such-command"},
 	} {

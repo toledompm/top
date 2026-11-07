@@ -72,8 +72,6 @@ func NewRoot(opts Options) *cobra.Command {
 		newDeployCmd(c),
 		newHistoryCmd(c),
 		newLogsCmd(c),
-		newBackupCmd(c),
-		newRecoverCmd(c),
 		newUninstallCmd(c),
 		newControllerCmd(c),
 	)
@@ -124,8 +122,8 @@ func (c *cctx) persistentPreRun(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// invocation renders the contract "command" field ("status", "backup
-// create", "recover restart"): the command path minus the binary name.
+// invocation renders the contract "command" field ("status", "reconcile
+// diff"): the command path minus the binary name.
 // Single definition lives in execute.go; this comment is where a reader
 // would first look for it.
 // (definition: execute.go invocation())

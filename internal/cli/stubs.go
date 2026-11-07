@@ -19,7 +19,6 @@ import (
 	"github.com/toledompm/top/internal/exec"
 	"github.com/toledompm/top/internal/install"
 	"github.com/toledompm/top/internal/reconcile"
-	"github.com/toledompm/top/internal/recover"
 	"github.com/toledompm/top/internal/secrets"
 	"github.com/toledompm/top/internal/spec"
 	"github.com/toledompm/top/internal/store/sqlite"
@@ -40,8 +39,8 @@ func (c *cctx) orRunner() exec.Runner {
 }
 
 // Command bodies (the file keeps its M1 name; most bodies are real now).
-// What remains a *validated stub* here: `status` and the `backup` group.
-// Real bodies: doctor, install, uninstall, logs, recover, controller run,
+// What remains a *validated stub* here: `status`.
+// Real bodies: doctor, install, uninstall, logs, controller run,
 // plus the T-309 reconcile family in reconcmd.go. Stubs parse and
 // validate flags and arguments against internal/domain, load config
 // (root persistentPreRun), and print the versioned envelope; no stub
@@ -106,7 +105,7 @@ func newDoctorCmd(c *cctx) *cobra.Command {
 }
 
 // newInstallCmd — REAL (T-205..T-207): the phased installer behind the
-// same flag surface the stub validated. Wiring mirrors the doctor/recover
+// same flag surface the stub validated. Wiring mirrors the doctor
 // bodies: streams+config from the cctx, Runner from Options (fake in
 // tests), the concrete backend wired HERE (composition root — internal/
 // install only knows the PlatformBackend interface, ADR-0006). Exit codes:
@@ -436,7 +435,7 @@ func newDeployCmd(c *cctx) *cobra.Command {
 					return err
 				}
 				if c.format != FormatJSON {
-					_, _ = fmt.Fprintln(c.out, "note: self-deploy of the controller (ADR-0005 human gate): the previous release keeps serving until the readiness gate passes; on failure the old release stays in place — roll back with `topctl recover redeploy`")
+					_, _ = fmt.Fprintln(c.out, "note: self-deploy of the controller (ADR-0005 human gate): the previous release keeps serving until the readiness gate passes; on failure the old release stays in place — re-run `topctl install` to converge it")
 				}
 			}
 			rev := flagString(cmd, "revision")
@@ -550,7 +549,7 @@ func historyFilterNote(ref domain.ServiceRef) string {
 // (even with empty output); missing service → "not-found", 3; dokku
 // refusing → "failed", 3; backend itself unusable → "backend-unavailable",
 // 4. Text mode prints log lines verbatim for humans; -o json emits the
-// versioned envelope (doctor/recover pattern).
+// versioned envelope (doctor pattern).
 func newLogsCmd(c *cctx) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs <ns/name>",
@@ -652,7 +651,7 @@ func readinessHints(ref string, rd backend.Readiness) []string {
 	if !rd.Deployed {
 		hints = append(hints, "service is not deployed; run `topctl reconcile` to converge it")
 	} else if !rd.Running {
-		hints = append(hints, "processes are not running; run `topctl reconcile` (or `topctl recover redeploy` when the controller is down)")
+		hints = append(hints, "processes are not running; run `topctl reconcile` (or `dokku ps:restart` for the app directly)")
 	}
 	switch rd.Build {
 	case domain.BuildFailed:
@@ -713,186 +712,6 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
-}
-
-// newBackupCmd — subcommand group: create (mutating, gated), list/verify
-// (read-only).
-func newBackupCmd(c *cctx) *cobra.Command {
-	backup := &cobra.Command{
-		Use:   "backup",
-		Short: "Take, list, or verify TOP metadata backups (ADR-0007)",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return c.usageErr(cmd, "backup requires a subcommand: create, list, or verify")
-		},
-	}
-
-	create := &cobra.Command{
-		Use:   "create",
-		Short: "Take a backup of TOP's metadata (confirm-gated)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := c.requireConfirm(cmd, "taking a backup of TOP's metadata"); err != nil {
-				return err
-			}
-			return c.notImpl(cmd, true)
-		},
-	}
-	create.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
-
-	list := &cobra.Command{
-		Use:   "list",
-		Short: "List existing backups",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return c.notImpl(cmd, false)
-		},
-	}
-
-	verify := &cobra.Command{
-		Use:   "verify [label]",
-		Short: "Verify a backup's integrity (default: latest)",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return c.notImpl(cmd, false)
-		},
-	}
-
-	backup.AddCommand(create, list, verify)
-	return backup
-}
-
-// newRecoverCmd — the independent recovery path (ADR-0005): diagnose
-// fully real (M2 slice of docs/contracts/backup-recovery.md's Recovery
-// section); restart/redeploy real-but-minimal; restore REAL (M5/T-503)
-// behind the ADR-0007 safeguard order. All broadcast through
-// internal/recover with Options.Runner as the process seam — the real
-// host unless a test injected a fake. Findings render in the doctor
-// vocabulary (internal/doctor's Report shape, reused); exit code:
-// diagnose fails → 1 (the contract's "drift/diagnose-findings" space),
-// failed restart/redeploy/restore → 3 (operation failed), store
-// unavailability during a mutation → 4.
-func newRecoverCmd(c *cctx) *cobra.Command {
-	recoverCmd := &cobra.Command{
-		Use:   "recover",
-		Short: "Controllerless diagnosis and repair (works with controller down, ADR-0005)",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return c.usageErr(cmd, "recover requires a subcommand: diagnose, restart, redeploy, or restore")
-		},
-	}
-
-	diagnose := &cobra.Command{
-		Use:   "diagnose",
-		Short: "Report state of dokku, store, secrets, and controller (read-only)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			rep := recover.Diagnose(cmd.Context(), c.recoverOpts())
-			if c.format == FormatJSON {
-				if err := c.emitOk(cmd, recover.Summary(rep), rep.EnvelopeData()); err != nil {
-					return err
-				}
-			} else if err := recover.RenderText(c.out, rep); err != nil {
-				return &ExitError{Code: ExitFailed, Err: err}
-			}
-			if !rep.OK() {
-				return &ExitError{
-					Code: ExitDrift,
-					Err:  errors.New("recover diagnose: failures found (see per-finding suggested commands above)"),
-				}
-			}
-			return nil
-		},
-	}
-	recoverCmd.AddCommand(diagnose)
-
-	restart := &cobra.Command{
-		Use:   "restart",
-		Short: "Restart the TOP controller without a full deploy (confirm-gated)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := c.requireConfirm(cmd, "restarting the TOP controller"); err != nil {
-				return err
-			}
-			return c.runRecoverAction(cmd, "restart", func(o recover.Options) (*recover.Result, error) {
-				return recover.Restart(cmd.Context(), o, flagBool(cmd, "dry-run"))
-			})
-		},
-	}
-	restart.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
-
-	redeploy := &cobra.Command{
-		Use:   "redeploy",
-		Short: "Redeploy the controller from last-known-good or the pinned image (confirm-gated)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if rev := flagString(cmd, "revision"); rev != "" {
-				if err := domain.ValidRevision(rev); err != nil {
-					return c.usageErr(cmd, "--revision: "+err.Error())
-				}
-			}
-			if err := c.requireConfirm(cmd, "redeploying the TOP controller via Dokku directly"); err != nil {
-				return err
-			}
-			return c.runRecoverAction(cmd, "redeploy", func(o recover.Options) (*recover.Result, error) {
-				return recover.Redeploy(cmd.Context(), o, flagString(cmd, "revision"), flagBool(cmd, "dry-run"))
-			})
-		},
-	}
-	redeploy.Flags().String("revision", "", "redeploy a specific git commit sha instead of the store's last-known-good (or the pinned bootstrap image)")
-	redeploy.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
-
-	restore := &cobra.Command{
-		Use:   "restore",
-		Short: "Restore TOP's metadata from a backup (confirm-gated; ADR-0007 safeguards)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			backupFlag := flagString(cmd, "backup")
-			if backupFlag == "" {
-				return c.usageErr(cmd, "--backup <file-or-user@host:path> is required (registered paths come from `topctl backup list`; user@host:path pulls the offsite lifeline first)")
-			}
-			if err := c.requireConfirm(cmd, "restoring TOP's metadata from a backup (the controller is stopped; refuses to overwrite a newer database without --force)"); err != nil {
-				return err
-			}
-			return c.runRecoverAction(cmd, "restore", func(o recover.Options) (*recover.Result, error) {
-				return recover.Restore(cmd.Context(), o, backupFlag, flagBool(cmd, "force"), flagBool(cmd, "dry-run"))
-			})
-		},
-	}
-	restore.Flags().String("backup", "", "backup file to restore (required; a user@host:path spec is pulled from the offsite target via rsync first)")
-	restore.Flags().Bool("force", false, "accept restoring over a live DB whose operations are newer than the backup's watermark (the rollback loss is explicit, ADR-0007 safeguard 2)")
-	restore.Flags().Bool("dry-run", false, "print the plan and mutate nothing")
-
-	recoverCmd.AddCommand(restart, redeploy, restore)
-	return recoverCmd
-}
-
-// runRecoverAction renders a restart/redeploy result (success envelope
-// carrying the runbook data, or a failed error envelope with the exact
-// retry command).
-func (c *cctx) runRecoverAction(cmd *cobra.Command, verb string, do func(recover.Options) (*recover.Result, error)) error {
-	res, err := do(c.recoverOpts())
-	if err != nil {
-		return c.emitErrCode(cmd, "failed", ExitFailed, fmt.Sprintf("%s: %v (touches only the Dokku CLI, the filesystem, and the state file — the same independence as diagnose)", verb, err))
-	}
-	msg := fmt.Sprintf("%s %s: done via %s", verb, res.App, res.Source)
-	if c.format == FormatJSON {
-		return c.emitOk(cmd, msg, res.DataMap())
-	}
-	if err := recover.RenderResultText(c.out, verb, res); err != nil {
-		return &ExitError{Code: ExitFailed, Err: err}
-	}
-	return nil
-}
-
-// recoverOpts builds internal/recover.Options from the validated config
-// + streams context (the doctor wiring's mirror image).
-func (c *cctx) recoverOpts() recover.Options {
-	return recover.Options{
-		Runner:     c.runner,
-		DataDir:    c.cfg.DataDir,
-		GitURL:     c.cfg.Git.URL,
-		GitBranch:  c.cfg.Git.Branch,
-		ConfigFile: c.cfgPathOrCanonical(),
-	}
 }
 
 // cfgPathOrCanonical resolves the config file diagnose validates: the

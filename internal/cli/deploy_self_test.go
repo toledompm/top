@@ -156,8 +156,8 @@ func TestDeploySelfHumanGateMatrix(t *testing.T) {
 			t.Errorf("the human self-deploy must run git:from-image with the new image")
 		}
 		if !strings.Contains(stdout, "previous release keeps serving") ||
-			!strings.Contains(stdout, "topctl recover redeploy") {
-			t.Errorf("the preservation + rollback echo must print:\n%s", stdout)
+			!strings.Contains(stdout, "topctl install") {
+			t.Errorf("the preservation + re-deploy echo must print:\n%s", stdout)
 		}
 	})
 

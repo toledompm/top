@@ -67,7 +67,7 @@ type Options struct {
 	// means: detect from Stdin (os.File char-device check).
 	StdinIsTTY *bool
 	// Runner overrides the process runner for host-touching commands
-	// (real bodies from M2 onward: recover; nil → exec.NewFastExec(),
+	// nil → exec.NewFastExec(),
 	// i.e. FastExec runs the real host). Tests inject exectest's
 	// FakeRunner so tests never touch the real host; the read-only
 	// doctor-style commands may, and do, exercise the real machine
