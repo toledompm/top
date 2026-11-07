@@ -8,9 +8,9 @@
 #   recorded `aborted` then superseded. This is M5 acceptance 7
 #   ("controller restart mid-operation") in its deploy-active shape.
 #
-#   Shape (t405 is the kill/revive precedent; this sharpens it to kill
-#   DURING a deploy, between the op's verb-started evidence and its
-#   completed row):
+#   Shape (this sharpens the kill/revive exercise to kill DURING a
+#   deploy, between the op's verb-started evidence and its completed
+#   row):
 #
 #   1. Push an env probe to the platform repo → a deploy of the probe
 #      service (the git:from-image pipeline) begins. Kill the controller
@@ -24,7 +24,7 @@
 #      exercises-window rows must contain a non-terminal state (running
 #      left behind by the kill, or aborted if some ledger swept it) and
 #      NEVER `succeeded with mismatched application`.
-#   4. Revive (restart policy `always`, then `topctl recover restart`).
+#   4. Revive (restart policy `always`, backed by `dokku ps:restart`).
 #      On revive the backstop re-diff: the same sha eventually gets a
 #      fresh terminal row (succeeded) and the probe value IS live — the
 #      deploy was completed by reconciliation, not left half-applied.
@@ -129,23 +129,25 @@ if history_has succeeded controller "$SHA"; then
 fi
 pass "no completed row for $SHA while the controller is dead (mid-deploy, genuinely)"
 
-## 1c. revive: restart policy window, then the controllerless repair path.
+## 1c. revive: restart policy window, then dokku ps:restart as backstop.
 
 POLICY_DEADLINE=$(($(date +%s) + 45))
 REVIVED_VIA=policy
 until [ -n "$(docker_running_name "$CONTROLLER_APP.web.")" ]; do
-    if [ "$(date +%s)" -ge "$POLICY_DEADLINE" ]; then REVIVED_VIA=recover; break; fi
+    if [ "$(date +%s)" -ge "$POLICY_DEADLINE" ]; then REVIVED_VIA=dokku; break; fi
     sleep 3
 done
-[ "$REVIVED_VIA" = "policy" ] && pass "controller revived via restart policy"
-"$TOPCTL_BIN" recover restart --confirm >/dev/null || die "topctl recover restart failed"
+if [ "$REVIVED_VIA" = "dokku" ]; then
+    ## the operator posture: revive the controller with dokku ps:restart.
+    "$DOKKU_BIN" ps:restart "$CONTROLLER_APP" >/dev/null || die "dokku ps:restart controller failed"
+fi
 DEADLINE=$(($(date +%s) + 120))
 until [ -n "$(docker_running_name "$CONTROLLER_APP.web.")" ]; do
     [ "$(date +%s)" -ge "$DEADLINE" ] && die "controller never revived (120s)"
     sleep 3
 done
 REVIVED_CTR=$(docker_running_name "$CONTROLLER_APP.web.")
-pass "controller back after revive ($REVIVED_VIA + recover restart)"
+pass "controller back after revive ($REVIVED_VIA + dokku ps:restart)"
 
 ## 1d. reconcile-on-revive COMPLETES the deploy: a fresh terminal row for
 ## the same sha (succeeded), superseding the killed run's record.

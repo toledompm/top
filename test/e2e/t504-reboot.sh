@@ -21,7 +21,7 @@
 #   Assertions:
 #   1. every managed container comes back up within a bounded deadline
 #      (restart policies + Dokku restore semantics).
-#   2. the controller revives and `recover diagnose` is clean.
+#   2. the controller revives and `topctl doctor` is clean.
 #   3. NO redeploys: every container that had an identity going in keeps
 #      it coming out (image + container fingerprint stable — a deploy
 #      would land a NEW container; a restart never changes the id). One
@@ -79,8 +79,8 @@ for app in $APPS; do
 $app|$("$DOCKER_BIN" inspect -f '{{.Id}} {{.Image}}' "$ctr")"
 done
 pass "managed set running with revival policies ($APPS)"
-"$TOPCTL_BIN" recover diagnose >/dev/null 2>&1 \
-    || die "precondition: recover diagnose has findings before the reboot"
+"$TOPCTL_BIN" doctor >/dev/null 2>&1 \
+    || die "precondition: doctor has findings before the reboot"
 
 WT=$(mktemp -d "${TMPDIR:-/tmp}/top-e2e-t504c.XXXXXX") || die "mktemp"
 trap 'rm -rf "$WT"' EXIT INT HUP
@@ -150,11 +150,11 @@ pass "full managed set running again within 180s"
 ## 4c. the controller revives: diagnose clean.
 
 DEADLINE=$(($(date +%s) + 120))
-until "$TOPCTL_BIN" recover diagnose >/dev/null 2>&1; do
-    [ "$(date +%s)" -ge "$DEADLINE" ] && die "recover diagnose still finding after revival (120s)"
+until "$TOPCTL_BIN" doctor >/dev/null 2>&1; do
+    [ "$(date +%s)" -ge "$DEADLINE" ] && die "doctor still finding after revival (120s)"
     sleep 5
 done
-pass "recover diagnose clean post-revival (controller healthy, store reads)"
+pass "doctor clean post-revival (controller healthy, store reads)"
 
 ## 4d. NO redeploys: every fingerprint survived — for the container-set
 ## analog of t405's single-app assertion (a deploy lands a NEW container;
