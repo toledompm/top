@@ -41,7 +41,7 @@ func TestExitCodeContract(t *testing.T) {
 		want int
 	}{
 		// read-only stubs → 0 with the stub envelope
-		{"status", []string{"status"}, ExitOK},
+		{"version", []string{"version"}, ExitOK},
 		{"history", []string{"history", "core/prometheus"}, ExitOK},
 		// history is REAL since T-309: absent state = honest empty read,
 		// exit 0 (its store-backed tests live in recon_test.go). diff /
@@ -76,14 +76,13 @@ func TestExitCodeContract(t *testing.T) {
 		// validation errors → 2, even in stubs
 		{"deploy-bad-ref", []string{"deploy", "NOT_VALID/ref-"}, ExitUsage},
 		{"logs-too-many-slashes", []string{"logs", "ns/name/extra"}, ExitUsage},
-		{"status-bad-namespace", []string{"status", "--namespace", "Core!"}, ExitUsage},
 		{"diff-bad-revision", []string{"diff", "--revision", "ZZZ"}, ExitUsage},
 		{"deploy-bad-revision", []string{"deploy", "core/prometheus", "--revision", "ABCDEF0"}, ExitUsage},
 		{"history-zero-limit", []string{"history", "--limit", "0"}, ExitUsage},
-		{"bad-output-format", []string{"status", "-o", "yaml"}, ExitUsage},
-		{"bad-redact", []string{"status", "--redact", "off"}, ExitUsage},
-		{"bad-schema-version", []string{"status", "--schema-version", "2"}, ExitUsage},
-		{"unknown-flag", []string{"status", "--wat"}, ExitUsage},
+		{"bad-output-format", []string{"version", "-o", "yaml"}, ExitUsage},
+		{"bad-redact", []string{"version", "--redact", "off"}, ExitUsage},
+		{"bad-schema-version", []string{"version", "--schema-version", "2"}, ExitUsage},
+		{"unknown-flag", []string{"version", "--wat"}, ExitUsage},
 		{"unknown-command", []string{"toplevel"}, ExitUsage},
 	}
 	for _, tc := range tests {
@@ -188,14 +187,14 @@ func TestConfigFlag(t *testing.T) {
 	if err := os.WriteFile(good, []byte(goodYaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, code := runCLI(t, false, "", "status", "--config", good); code != ExitOK {
+	if _, _, code := runCLI(t, false, "", "version", "--config", good); code != ExitOK {
 		t.Fatalf("--config good exit = %d, want %d", code, ExitOK)
 	}
 	bad := dir + "/bad.yaml"
 	if err := os.WriteFile(bad, []byte("apiVersion: wrong/false\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, errS, code := runCLI(t, false, "", "status", "--config", bad)
+	_, errS, code := runCLI(t, false, "", "version", "--config", bad)
 	if code != ExitUsage {
 		t.Fatalf("--config bad exit = %d, want %d (stderr %q)", code, ExitUsage, errS)
 	}
@@ -207,11 +206,11 @@ func TestConfigFlag(t *testing.T) {
 // Text render of the stub notice (themed renderer, golden inline).
 func TestTextRenderStub(t *testing.T) {
 	t.Parallel()
-	outS, _, code := runCLI(t, false, "", "status")
+	outS, _, code := runCLI(t, false, "", "version")
 	if code != ExitOK {
-		t.Fatalf("status exit = %d", code)
+		t.Fatalf("version exit = %d", code)
 	}
-	want := "status\n  message: not implemented: planned M2/M3\n"
+	want := "version\n  minDokku: 0.38\n  schemaVersion: 1\n  topctl: test-v0.0.0\n"
 	if outS != want {
 		t.Fatalf("text mode:\n%q\nwant:\n%q", outS, want)
 	}
