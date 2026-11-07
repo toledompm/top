@@ -83,14 +83,6 @@ CREATE TABLE resources (
     UNIQUE (kind, identifier)
 );
 
-CREATE TABLE backups (
-    path          TEXT PRIMARY KEY,
-    size          INTEGER NOT NULL DEFAULT 0,
-    watermark_op  TEXT NOT NULL DEFAULT '',
-    verified_at   INTEGER,
-    verify_result TEXT NOT NULL DEFAULT '',
-    created_at    INTEGER NOT NULL
-);
 
 CREATE TABLE leases (
     name        TEXT PRIMARY KEY,
@@ -103,7 +95,6 @@ CREATE TABLE leases (
 -- Forward-only per ADR-0007; retained for completeness of the goose
 -- version list. Never invoked by TOP's controller or recovery path.
 DROP TABLE leases;
-DROP TABLE backups;
 DROP TABLE resources;
 DROP TABLE deliveries;
 DROP TABLE checkpoints;

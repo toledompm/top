@@ -28,7 +28,7 @@ func containsFold(s, sub string) bool {
 //     holder identity in the message (what names the contention point,
 //     e.g. the lease; otherwise the generic write-lock holder)
 //   - SQLITE_CORRUPT / SQLITE_NOTADB → ErrCorrupt: never retried; surface
-//     "run `topctl recover diagnose`"
+//     the corrupt-state reconstruction hint
 //   - SQLITE_CONSTRAINT → ErrConflict for the known unique-key sites
 //     (what names the clashing record)
 //   - everything else: wrapped with context, class unchanged.

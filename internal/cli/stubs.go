@@ -714,16 +714,6 @@ func nonNil(s []string) []string {
 	return s
 }
 
-// cfgPathOrCanonical resolves the config file diagnose validates: the
-// operator's --config path when given, else the canonical
-// <dataDir>/top-config.yaml (internal/config README's load order).
-func (c *cctx) cfgPathOrCanonical() string {
-	if c.cfgPath != "" {
-		return c.cfgPath
-	}
-	return c.cfg.DataDir + "/top-config.yaml"
-}
-
 // newUninstallCmd — REAL (T-208): the ownership-safe teardown behind the
 // same flag surface. Each purge tier keeps its own flag (ADR-0009: no
 // yes-to-everything); --confirm is the whole command's gate. The fresh
@@ -759,7 +749,7 @@ func newUninstallCmd(c *cctx) *cobra.Command {
 			return c.emitInstallResult(cmd, res)
 		},
 	}
-	cmd.Flags().Bool("purge-data", false, "also delete TOP's SQLite state, storage entry, and backups under <dataDir> (irreversible; secrets/git keys untouched — their own tier)")
+	cmd.Flags().Bool("purge-data", false, "also delete TOP's state under <dataDir> (the SQLite file + any other state files; secrets/git keys untouched — their own tier)")
 	cmd.Flags().Bool("purge-secrets", false, "also delete the secret files and git key material under <dataDir> (irreversible)")
 	cmd.Flags().Bool("uninstall-dokku", false, "also remove Dokku itself (separate tier; prints what its uninstaller leaves behind)")
 	return cmd

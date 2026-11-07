@@ -16,7 +16,7 @@
 //	                          dokku absent, the pinned upstream bootstrap
 //	                          script, sudo via printed-exact-command fallback
 //	                          (never passwordless-assumed).
-//	Phase 3  wiring         — dataDir/{,secrets,git,backups} (0700 dirs,
+//	Phase 3  wiring         — dataDir/{,secrets,git} (0700 dirs,
 //	                          0600 files), deploy-key/known_hosts provisioning,
 //	                          shared internal network via the backend.
 //	Phase 4  bootstrap deploy — storage entry + app + pinned-image deploy,
@@ -37,7 +37,7 @@
 // Import hygiene (ADR-0006): this package imports internal/doctor,
 // internal/inventory, internal/exec, internal/config, internal/secret,
 // internal/domain, internal/store (interface only — sqlite.Open is the
-// one wiring point, mirroring internal/recover). It does NOT import
+// one wiring point). It does NOT import
 // internal/backend/dokku or internal/cli: the CLI (composition root) wires
 // the concrete backend via Options.Backend and renders results. The same
 // holds for the first reconciliation: Options.FirstRun carries the
@@ -65,7 +65,7 @@ import (
 const (
 	// StorageEntryName is the named Dokku storage entry carrying the
 	// controller's SQLite state (ADR-0005: SQLite on a Dokku persistent
-	// storage mount; backup-recovery contract: <dataDir>/top.db).
+	// storage mount at <dataDir>/top.db).
 	StorageEntryName = "top-metadata"
 
 	// InternalNetwork is the shared Docker network for routing.mode
@@ -82,11 +82,11 @@ var DataDirDefault = doctor.DefaultDataDir
 
 // DefaultControllerImage / DefaultControllerTag pin the bootstrap deploy
 // (ADR-0005 "bootstrap pins a specific version"). The pair composes to the
-// same fictional-but-formatted reference internal/recover's
-// DefaultBootstrapImage spells out ("ghcr.io/example/top/topctl:
-// bootstrap-pinned"; no real registry — committed examples are fictional,
-// ADR-0014-style). Bumping either is a conscious release decision: the
-// recovery path's fallback and the next install must agree.
+// fictional-but-formatted reference format TOP uses everywhere
+// ("ghcr.io/example/top/topctl: bootstrap-pinned"; no real registry —
+// committed examples are fictional, ADR-0014-style). Bumping either is a
+// conscious release decision: the bootstrap deploy and the next install
+// must agree.
 var (
 	DefaultControllerImage = "ghcr.io/example/top/topctl"
 	DefaultControllerTag   = "bootstrap-pinned"
@@ -131,15 +131,14 @@ var (
 )
 
 // Options parameterize Install. Zero values select production seams; every
-// test-doubles ability mirrors internal/doctor's and internal/recover's
-// Options discipline (Runner / probes / clock injectable, defaults inside).
+// test-doubles ability mirrors internal/doctor's Options discipline (Runner / probes / clock injectable, defaults inside).
 type Options struct {
 	// Runner runs every external process (dokku probes, git ls-remote,
 	// wget, sudo, ssh-keygen surprises). nil → exec.NewFastExec().
 	Runner exec.Runner
 
 	// Backend is the PlatformBackend (the CLI wires internal/backend/dokku
-	// — the composition root, mirroring how doctor/recover get theirs).
+	// — the composition root, mirroring how doctor gets its runner).
 	// REQUIRED once not DryRun; phases 3-5 and uninstall refuse otherwise.
 	Backend backend.PlatformBackend
 
@@ -218,8 +217,7 @@ type Options struct {
 	// DeployTimeout bounds the bootstrap image deploy (0 → 10 min, the
 	// contract's budget; the adapter enforces its own identical cap).
 	DeployTimeout time.Duration
-	// HealthTimeout bounds the post-deploy health wait (0 → 3 min,
-	// matching recover's restart budget).
+	// HealthTimeout bounds the post-deploy health wait (0 → 3 min).
 	HealthTimeout time.Duration
 	// PollInterval spaces the health-wait Inspect polls (0 → 2 s).
 	PollInterval time.Duration

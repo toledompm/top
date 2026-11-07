@@ -69,10 +69,10 @@ func seedOwnHostLedger(t *testing.T, st store.Store, rows []*store.Resource) {
 }
 
 // seedInstalledFS builds the fixture data dir: secrets, git keys, top.db
-// placeholder files, backups, plus an inventory cmd json file.
+// placeholder files, plus an inventory cmd json file.
 func seedInstalledFS(t *testing.T, dataDir string) string {
 	t.Helper()
-	for _, sub := range []string{"", "secrets", "git", "backups"} {
+	for _, sub := range []string{"", "secrets", "git"} {
 		if err := os.MkdirAll(filepath.Join(dataDir, sub), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +95,7 @@ func seedInstalledFS(t *testing.T, dataDir string) string {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dataDir, "backups", "backup-fixture.sql"), []byte("-- fixture"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dataDir, "fixture-leftover.tmp"), []byte("fixture"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return secretName
@@ -362,7 +362,7 @@ func TestUninstallDestroyOrderReverseNamespace(t *testing.T) {
 }
 
 // TestUninstallPurgeTiers: defaults keep every byte of state; --purge-data
-// removes the SQLite state + backups + storage entry (NOT secrets/git);
+// removes the SQLite state + storage entry (NOT secrets/git);
 // --purge-secrets removes the secret files + git key material.
 func TestUninstallPurgeTiers(t *testing.T) {
 	t.Parallel()
@@ -381,9 +381,9 @@ func TestUninstallPurgeTiers(t *testing.T) {
 		if _, err := Uninstall(context.Background(), opts); err != nil {
 			t.Fatalf("uninstall: %v", err)
 		}
-		for _, kept := range []string{"top.db", "provider-token", "deploy_key", "known_hosts", "backup-fixture.sql"} {
+		for _, kept := range []string{"top.db", "provider-token", "deploy_key", "known_hosts", "fixture-leftover.tmp"} {
 			found := false
-			for _, walk := range []string{"", "secrets", "git", "backups"} {
+			for _, walk := range []string{"", "secrets", "git"} {
 				if _, err := os.Stat(filepath.Join(opts.DataDir, walk, kept)); err == nil {
 					found = true
 				}
@@ -427,8 +427,8 @@ func TestUninstallPurgeTiers(t *testing.T) {
 		if !slices.Contains(got, "dokku storage:unmount core-top-controller top-metadata --container-dir "+opts.DataDir) {
 			t.Errorf("purge-data must detach the state mount first; argv:\n%s", strings.Join(got, "\n"))
 		}
-		// SQLite/backups/inventory gone; secrets + git keys remain.
-		for _, gone := range []string{"top.db", "inventory-op-fixture.json", "backup-fixture.sql"} {
+		// SQLite/inventory/loose files gone; secrets + git keys remain.
+		for _, gone := range []string{"top.db", "inventory-op-fixture.json", "fixture-leftover.tmp"} {
 			if _, err := os.Stat(filepath.Join(opts.DataDir, gone)); !errors.Is(err, os.ErrNotExist) {
 				if err == nil {
 					t.Errorf("%s must be removed by --purge-data", gone)

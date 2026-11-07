@@ -14,7 +14,7 @@ single-writer connection policy.
   `ErrLocked` (with holder identity), `ErrCorrupt` (plus a `Check`/`Open`
   integrity path and schema-downgrade protection via `ErrSchemaNewer`).
 - The interface documents the *responsibility list* (operations, observed
-  state, checkpoints, delivery dedup, resource ledger, backup registry,
+  state, checkpoints, delivery dedup, resource ledger,
   leases). Adding a method means updating the contract doc in the same PR —
   that's checked by `conformance_check` doc-lint and behavior probes
   (see `conformance_check/README.md`).

@@ -137,7 +137,7 @@ func TestOperationLifecycle(t *testing.T) {
 	}
 
 	// Failure requires a redacted error text.
-	op2 := mustInsertOp(t, st, "corr-2", domain.OpBackup)
+	op2 := mustInsertOp(t, st, "corr-2", domain.OpDeploy)
 	if err := st.UpdateOperationState(ctx, op2.ID, domain.OpRunning, "", time.Time{}); err != nil {
 		t.Fatalf("→ running: %v", err)
 	}

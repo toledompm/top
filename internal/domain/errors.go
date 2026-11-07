@@ -20,7 +20,7 @@ var (
 	// the holder identity is in the message. Do not spin-retry blind.
 	ErrLocked = errors.New("locked")
 	// ErrCorrupt: metadata state is unreadable/corrupt. Never retry —
-	// surface "run `topctl recover diagnose`" (state-store contract).
+	// surface the reconstruction hint (state-store contract).
 	ErrCorrupt = errors.New("corrupt")
 	// ErrInvalid: the input/record fails validation.
 	ErrInvalid = errors.New("invalid")
@@ -96,15 +96,15 @@ func (e LockedError) hintOrDef(def string) string {
 	return e.Hint
 }
 
-// CorruptError reports unreadable/corrupt metadata; per contract it always
-// steers to `topctl recover diagnose`, never a retry.
+// CorruptError reports unreadable/corrupt metadata; per contract it never
+// suggests a blind retry — the remedy is rebuilding the store.
 type CorruptError struct {
 	Detail string
 	Hint   string
 }
 
 func (e CorruptError) Error() string {
-	return fmt.Sprintf(hintFmt, "metadata corrupt: "+e.Detail, e.hintOrDef("run `topctl recover diagnose`"))
+	return fmt.Sprintf(hintFmt, "metadata corrupt: "+e.Detail, e.hintOrDef("the metadata DB is reconstructible: wipe the state file and re-run topctl install; reconcile is idempotent"))
 }
 func (e CorruptError) Unwrap() error { return ErrCorrupt }
 

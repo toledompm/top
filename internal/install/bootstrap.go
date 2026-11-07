@@ -193,13 +193,12 @@ func verParts(v string) []int {
 
 // --- phase 3: platform wiring ----------------------------------------------------
 
-// dir targets TOP creates (contract: dataDir itself + secrets, git,
-// backups; 0700 dirs).
+// dir targets TOP creates (contract: dataDir itself + secrets, git;
+// 0700 dirs).
 var wiringDirs = []struct{ sub string }{
 	{sub: ""},
 	{sub: "secrets"},
 	{sub: "git"},
-	{sub: "backups"},
 }
 
 // runWiring creates the data-dir tree, provisions key material, creates
@@ -340,9 +339,9 @@ func copyFile0600(src, dst string) error {
 //
 // Every created asset gets its bootstrap-owned ledger row (created_by =
 // this phase's op). On ANY failure the phase's op records
-// "bootstrap-failed: …" (the contract's recovery marker — recover
-// diagnose reads failed ops) and the partial state stays: re-runs adopt
-// what exists and finish.
+// "bootstrap-failed: …" (the contract's recovery marker — failed ops
+// are visible via `topctl history`) and the partial state stays: re-runs
+// adopt what exists and finish.
 func runBootstrapDeploy(ctx context.Context, opts Options, st store.Store, opID string, res *Result, extra phaseExtras) error {
 	app := opts.ControllerAppName()
 	ref := ControllerRef()
@@ -425,10 +424,9 @@ func runBootstrapDeploy(ctx context.Context, opts Options, st store.Store, opID 
 // storageEntryExists draft; the phase defers entry/creation idempotency
 // to the adapter (Ensure*, never probe-then-act from the caller side).
 
-// waitHealthy polls Inspect until deployed && running or timeout — the
-// same discipline as recover's waitHealthy, but through the FULL backend
-// (this is the installer, not the recovery path; richer report re-use is
-// the point of the interface-inspect seam).
+// waitHealthy polls Inspect until deployed && running or timeout,
+// through the FULL backend (richer report re-use is the point of the
+// interface-inspect seam).
 func waitHealthy(ctx context.Context, opts Options, ref domain.ServiceRef, app string) error {
 	deadline := time.Now().Add(opts.HealthTimeout)
 	for {

@@ -37,9 +37,6 @@ func TestMetricsScrape(t *testing.T) {
 	m.RecordWebhookDelivery("push", ResultOK)
 	m.RecordGitPoll(3*time.Second, ResultError)
 	m.ObserveSQLiteOperation("get", 5*time.Millisecond)
-	m.SetBackupSuccessAt(time.Unix(1700000060, 0))
-	m.SetBackupVerifyResult(true)
-	m.RecordBackup(500*time.Millisecond, ResultOK)
 
 	out := scrape(t, m)
 
@@ -56,10 +53,6 @@ func TestMetricsScrape(t *testing.T) {
 		`top_git_poll_duration_seconds`,
 		`top_git_poll_total{result="error"} 1`,
 		`top_sqlite_operation_duration_seconds_sum{operation="get"}`,
-		`top_backup_last_success_timestamp`,
-		`top_backup_last_verify_result 1`,
-		`top_backup_duration_seconds_sum`,
-		`top_backup_total{result="ok"} 1`,
 	} {
 		if !strings.Contains(out, fragment) {
 			t.Errorf("/metrics missing %q", fragment)
@@ -139,8 +132,6 @@ func TestLabelSetsBoundedByEnumerations(t *testing.T) {
 	m.RecordWebhookDelivery("push", ResultOK)
 	m.RecordGitPoll(time.Millisecond, ResultOK)
 	m.ObserveSQLiteOperation("get", time.Millisecond)
-	m.SetBackupSuccessAt(time.Now())
-	m.SetBackupVerifyResult(true)
 
 	out := scrape(t, m)
 
@@ -155,8 +146,6 @@ func TestLabelSetsBoundedByEnumerations(t *testing.T) {
 		"top_git_poll_duration_seconds":           nil,
 		"top_git_poll_total":                      {"result"},
 		"top_sqlite_operation_duration_seconds":   {"operation"},
-		"top_backup_last_success_timestamp":       nil,
-		"top_backup_last_verify_result":           nil,
 		"top_build_info":                          {"commit", "version"},
 	}
 

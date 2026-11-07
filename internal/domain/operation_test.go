@@ -112,7 +112,7 @@ func TestOperationTimestampBookkeeping(t *testing.T) {
 
 func TestOperationFailRequiresMessage(t *testing.T) {
 	t.Parallel()
-	op := mustOp(t, OpBackup, ActorSchedule, "", "")
+	op := mustOp(t, OpDeploy, ActorSchedule, "", "")
 	_ = op.Start()
 	if err := op.Fail(""); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("empty fail message = %v", err)
@@ -127,7 +127,7 @@ func TestNewOperationValidation(t *testing.T) {
 	if _, err := NewOperation(OpReconcile, Actor("ghost"), "", ""); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bad actor = %v", err)
 	}
-	op, err := NewOperation(OpRestore, ActorRecovery, "restore-1", "")
+	op, err := NewOperation(OpDeploy, ActorSchedule, "sched-1", "")
 	if err != nil {
 		t.Fatalf("NewOperation: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestNewOperationValidation(t *testing.T) {
 
 func TestOperationEnums(t *testing.T) {
 	t.Parallel()
-	for _, k := range []OperationKind{OpInstall, OpReconcile, OpDeploy, OpBackup, OpRestore, OpUninstall, OpOther} {
+	for _, k := range []OperationKind{OpInstall, OpReconcile, OpDeploy, OpUninstall, OpOther} {
 		if !k.IsValid() || k.String() == "" {
 			t.Fatalf("kind %q invalid", k)
 		}
@@ -146,7 +146,7 @@ func TestOperationEnums(t *testing.T) {
 	if OperationKind("chore").IsValid() {
 		t.Fatal("unknown kind valid")
 	}
-	for _, a := range []Actor{ActorUser, ActorController, ActorWebhook, ActorRecovery, ActorSchedule} {
+	for _, a := range []Actor{ActorUser, ActorController, ActorWebhook, ActorSchedule} {
 		if !a.IsValid() {
 			t.Fatalf("actor %q invalid", a)
 		}

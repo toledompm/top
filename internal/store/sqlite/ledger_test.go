@@ -82,63 +82,6 @@ func TestResourceLedger(t *testing.T) {
 	}
 }
 
-func TestBackupRegistry(t *testing.T) {
-	st := openTest(t)
-	ctx := context.Background()
-	b := &store.Backup{
-		Path:        "/var/lib/backups/top-20261027.db",
-		Size:        12_345,
-		WatermarkOp: "op-9",
-	}
-	if err := st.InsertBackup(ctx, b); err != nil {
-		t.Fatalf("InsertBackup: %v", err)
-	}
-	if err := st.InsertBackup(ctx, b); errOf(err, domain.ErrConflict) {
-	} else {
-		t.Fatalf("dup backup err = %v, want ErrConflict", err)
-	}
-	if err := st.SetBackupVerified(ctx, b.Path, "ok", time.Time{}); err != nil {
-		t.Fatalf("SetBackupVerified: %v", err)
-	}
-	if err := st.SetBackupVerified(ctx, "/nope", "ok", time.Time{}); errOf(err, domain.ErrNotFound) {
-	} else {
-		t.Fatalf("unregistered backup err = %v, want ErrNotFound", err)
-	}
-	// Verify_result records failure text too; both columns round-trip.
-	if err := st.SetBackupVerified(ctx, b.Path, "integrity: xx (retry)", time.Now()); err != nil {
-		t.Fatalf("SetBackupVerified retry: %v", err)
-	}
-	got, err := st.ListBackups(ctx)
-	if err != nil {
-		t.Fatalf("ListBackups: %v", err)
-	}
-	if len(got) != 1 || got[0].Size != b.Size || got[0].WatermarkOp != b.WatermarkOp ||
-		got[0].VerifyResult != "integrity: xx (retry)" || got[0].VerifiedAt.IsZero() {
-		t.Fatalf("backup round-trip: %+v", got)
-	}
-
-	// RemoveBackup: the prune-side delete (file removal is the engine's,
-	// the row goes second). Unknown path is ErrNotFound; after removal the
-	// registry lists nothing.
-	if err := st.RemoveBackup(ctx, "/nope"); errOf(err, domain.ErrNotFound) {
-	} else {
-		t.Fatalf("RemoveBackup unknown err = %v, want ErrNotFound", err)
-	}
-	if err := st.RemoveBackup(ctx, b.Path); err != nil || len(got2(t, st)) != 0 {
-		t.Fatalf("RemoveBackup known: err=%v list=%+v", err, got2(t, st))
-	}
-}
-
-// got2 lists the backup registry (helper keeping the test above single-purpose).
-func got2(t *testing.T, st *Store) []*store.Backup {
-	t.Helper()
-	got, err := st.ListBackups(context.Background())
-	if err != nil {
-		t.Fatalf("ListBackups: %v", err)
-	}
-	return got
-}
-
 func TestLeaseAcquireReleaseExpire(t *testing.T) {
 	st := openTest(t)
 	ctx := context.Background()

@@ -25,7 +25,7 @@ func TestClassifyErrorSemantics(t *testing.T) {
 		t.Fatalf("classification = %v, want ErrLocked-classified error", err)
 	}
 
-	// Corruption codes → ErrCorrupt ("run `topctl recover diagnose`").
+	// Corruption codes → ErrCorrupt (the reconstruction hint).
 	const corruptMsg = "fatal: The database disk image is malformed (SQLITE_CORRUPT)"
 	cerr := classify("read", fmt.Errorf("%s", corruptMsg), "")
 	if !errOf(cerr, domain.ErrCorrupt) {

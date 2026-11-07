@@ -91,22 +91,6 @@ type Store interface {
 	// resource; ErrNotFound when absent.
 	RemoveLedgerEntry(ctx context.Context, kind, identifier string) error
 
-	// --- backup registry -----------------------------------------------------
-
-	// InsertBackup registers a backup file in the registry; duplicate
-	// paths are ErrConflict.
-	InsertBackup(ctx context.Context, b *Backup) error
-	// ListBackups returns the registry, newest first.
-	ListBackups(ctx context.Context) ([]*Backup, error)
-	// SetBackupVerified records the verification result and time for one
-	// backup; ErrNotFound when the path is unregistered.
-	SetBackupVerified(ctx context.Context, path, verifyResult string, at time.Time) error
-	// RemoveBackup deletes one registry row after the file itself is
-	// pruned (retention, backup-recovery contract); ErrNotFound when the
-	// path is unregistered. The engine deletes the file FIRST, then the
-	// row, so a registry row is never present for a missing file.
-	RemoveBackup(ctx context.Context, path string) error
-
 	// --- serialization lease ---------------------------------------------------
 
 	// AcquireLease takes (or renews) the named serialization lease for
@@ -119,8 +103,6 @@ type Store interface {
 	// un-expired lease held by someone else is ErrLocked.
 	ReleaseLease(ctx context.Context, name, holderID string) error
 }
-
-// Filter/ledger/backup value types -------------------------------------------------
 
 // OperationFilter narrows ListOperations; zero fields match everything.
 type OperationFilter struct {
@@ -166,17 +148,6 @@ type Resource struct {
 	CreatedAt   time.Time
 }
 
-// Backup is one registered metadata backup file (ADR-0007 /
-// backup-recovery contract — restore-support registry only; M5 uses it).
-type Backup struct {
-	Path         string
-	Size         int64
-	WatermarkOp  string // newest operation ID included in the backup
-	VerifiedAt   time.Time
-	VerifyResult string // e.g. "ok", failure detail
-	CreatedAt    time.Time
-}
-
 // Checkpoint extends the reconciliation checkpoint (domain.Checkpoint) with
 // the per-service *applied* revision map the state-store contract records:
 // what each service's working baseline is, distinct from last-known-good.
@@ -203,7 +174,7 @@ var ErrSchemaNewer = errors.New("store schema is newer than this build")
 
 // SchemaNewerError reports an on-disk goose schema version greater than
 // SchemaVersionMax; running forward would be a silent downgrade. The
-// recovery path is: run the newer version (or restore an older backup);
+// path forward is: run a newer topctl/controller build;
 // automatic rollback is intentionally absent.
 type SchemaNewerError struct {
 	Current int64 // schema version found on disk
@@ -212,7 +183,7 @@ type SchemaNewerError struct {
 
 func (e SchemaNewerError) Error() string {
 	return fmt.Sprintf(
-		"store schema is newer than this build: schema version %d > known %d (hint: run a newer topctl/controller build, or restore an earlier backup; downgrade is never automatic)",
+		"store schema is newer than this build: schema version %d > known %d (hint: run a newer topctl/controller build; downgrade is never automatic)",
 		e.Current, e.Known)
 }
 

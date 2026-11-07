@@ -110,8 +110,8 @@ func (s *Store) SchemaVersion(ctx context.Context) (int64, error) {
 	return appliedVersion(ctx, s.db)
 }
 
-// Check verifies database integrity; callers must surface
-// `topctl recover diagnose` rather than retrying on ErrCorrupt.
+// Check verifies database integrity; callers must surface the
+// corrupt-state hint rather than retrying on ErrCorrupt.
 func (s *Store) Check(ctx context.Context) error {
 	var result string
 	err := s.db.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&result)

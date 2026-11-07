@@ -13,7 +13,7 @@ sqlite/
 ├── open.go          Open: DSN pragmas, connection policy, migrations, downgrade check
 ├── store.go         operations / observed state / checkpoints / deliveries
 ├── runs.go          RecordReconcileRun (atomic run + outcomes + checkpoint), checkpoint helpers
-├── ledger.go        resource ledger (ADR-0009) + backup registry
+├── ledger.go        resource ledger (ADR-0009)
 ├── lease.go         serialization lease (single-writer reconcile, CLI mutual exclusion)
 ├── errors.go        driver-error → contract-class mapping (classify)
 ├── embed.go         embedded migrations
@@ -31,7 +31,6 @@ sqlite/
 | `checkpoints` | reconciliation resume/rollback state | singleton (id=1): repo-wide last-applied / last-known-good + two per-service JSON maps |
 | `deliveries` | webhook dedup | `INSERT OR IGNORE`; 0 rows updated = duplicate |
 | `resources` | ownership ledger (ADR-0009) | `UNIQUE(kind, identifier)`, state `bootstrap-owned|managed|pre-existing` |
-| `backups` | backup registry | path PK, size, `watermark_op`, `verified_at`+`verify_result` |
 | `leases` | serialization lease | PK `name`, holder + nanosecond `expires_at` |
 
 Indexes: `operations(state)`, `operations(kind, created_at)`, `runs(correlation_id)`.
@@ -76,18 +75,18 @@ writes — through one write-capable connection.
 On open, the highest applied `version_id` is compared to
 `SchemaVersionMax`. A newer on-disk schema returns
 `store.ErrSchemaNewer` (`SchemaNewerError{Current, Known}`): run the newer
-build, or restore an earlier backup. Running forward-off-a-newer-schema is
+build. Running forward-off-a-newer-schema is
 a silent downgrade and is deliberately impossible.
 
 ## Error semantics (state-store contract)
 
 | Class | Sentinel | Produced by |
 | --- | --- | --- |
-| Constraint/existence clash | `domain.ErrConflict` | duplicate operation id, ledger `(kind,identifier)`, backup path; `MarkManaged` on a pre-existing entry, identical-entity adoption |
+| Constraint/existence clash | `domain.ErrConflict` | duplicate operation id, ledger `(kind,identifier)`, ledger entry duplication; `MarkManaged` on a pre-existing entry, identical-entity adoption |
 | Invalid lifecycle move | `domain.ErrConflict` | `UpdateOperationState` against the persisted state, per `domain.CanTransition` (terminal states reject further moves; skips too) |
 | Persistent writer contention | `domain.ErrLocked` | `SQLITE_BUSY`/`SQLITE_LOCKED` after `busy_timeout`; contested lease acquire/release — **holder identity is in the message** |
 | Corruption / open failure | `domain.ErrCorrupt` | ping failure, `SQLITE_CORRUPT`/`SQLITE_NOTADB`, unreadable JSON columns, `Check`'s `PRAGMA integrity_check` result. Never retried — surface `topctl recover diagnose` |
-| Missing | `domain.ErrNotFound` | not-yet-observed service, unknown operation, unregistered backup/ledger entry |
+| Missing | `domain.ErrNotFound` | not-yet-observed service, unknown operation, ledger entry |
 | Input validation | `domain.ErrInvalid` | empty ids, nil records, invalid enum values, a failed operation recorded without an error string |
 | Schema newer than build | `store.ErrSchemaNewer` | see Downgrade rule |
 
@@ -99,7 +98,7 @@ Everything is wrapped with operation context (`fmt.Errorf("op: %w")`);
 `go test ./internal/store/... -race` covers: migration from zero, embedded
 version list, operation lifecycle incl. rejected transitions, JSON
 round-trips (operations details, observed state, checkpoint maps), delivery
-dedup, ledger/backup registry, lease acquire/renew/expire/foreign-release,
+dedup, resource ledger, lease acquire/renew/expire/foreign-release,
 downgrade protection, the ADR-0007 pragma set taking effect, and a
 two-goroutine contention workload (no `time.Sleep`; the single connection
 serializes it). Databases are always per-test temp files.

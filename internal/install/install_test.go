@@ -441,7 +441,7 @@ func TestInstallFullPhaseSequence(t *testing.T) {
 	dataDir := opts.DataDir
 
 	// Directory tree: 0700.
-	for _, sub := range []string{"", "secrets", "git", "backups"} {
+	for _, sub := range []string{"", "secrets", "git"} {
 		stt, err := os.Stat(filepath.Join(dataDir, sub))
 		if err != nil {
 			t.Fatalf("dir %s missing after install: %v", sub, err)

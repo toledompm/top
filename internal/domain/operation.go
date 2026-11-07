@@ -14,16 +14,14 @@ const (
 	OpInstall   OperationKind = "install"
 	OpReconcile OperationKind = "reconcile"
 	OpDeploy    OperationKind = "deploy"
-	OpBackup    OperationKind = "backup"
-	OpRestore   OperationKind = "restore"
 	OpUninstall OperationKind = "uninstall"
-	OpOther     OperationKind = "other" // misc tracked work (e.g. recover diagnose)
+	OpOther     OperationKind = "other" // misc tracked work
 )
 
 // IsValid reports whether k is a known operation kind.
 func (k OperationKind) IsValid() bool {
 	switch k {
-	case OpInstall, OpReconcile, OpDeploy, OpBackup, OpRestore, OpUninstall, OpOther:
+	case OpInstall, OpReconcile, OpDeploy, OpUninstall, OpOther:
 		return true
 	}
 	return false
@@ -42,16 +40,15 @@ const (
 	ActorController Actor = "controller"
 	// ActorWebhook: a webhook-triggered reconcile.
 	ActorWebhook Actor = "webhook"
-	// ActorRecovery: the independent recovery path.
-	ActorRecovery Actor = "recovery"
-	// ActorSchedule: a scheduled background job (e.g. daily backup).
+	// ActorSchedule: a scheduled background job (e.g. the controller's
+	// periodic reconcile).
 	ActorSchedule Actor = "schedule"
 )
 
 // IsValid reports whether a is a known actor.
 func (a Actor) IsValid() bool {
 	switch a {
-	case ActorUser, ActorController, ActorWebhook, ActorRecovery, ActorSchedule:
+	case ActorUser, ActorController, ActorWebhook, ActorSchedule:
 		return true
 	}
 	return false
@@ -130,7 +127,7 @@ type Operation struct {
 	// delivery id) — never a secret.
 	CorrelationID string
 	// Revision is the desired-state revision the operation works toward
-	// ("" for kinds without one, e.g. backup).
+	// ("" for kinds without one, e.g. doctor checks).
 	Revision string
 	// StartedAt is set when the operation enters running.
 	StartedAt time.Time

@@ -273,7 +273,7 @@ func dokkuSetupPlan(opts Options) string {
 }
 
 func dirsPlan(dataDir string) string {
-	return dataDir + "/{,secrets,git,backups} as 0700 dirs (files 0600)"
+	return dataDir + "/{,secrets,git} as 0700 dirs (files 0600)"
 }
 
 func deployKeyPlan(opts Options) string {
@@ -348,8 +348,8 @@ func runPhase(
 
 // renderPhaseFailure prefixes the redacted failure text with the
 // bootstrap-failed marker when the failing phase is the bootstrap deploy
-// (installer contract failure behavior: `topctl recover diagnose`
-// explains next steps) and always carries the resume command.
+// so the failure is visible in `topctl history`) and always carries the
+// resume command.
 func renderPhaseFailure(phaseName string, err error) string {
 	prefix := ""
 	if phaseName == phaseNames[phaseBootstrapDeploy] {
@@ -377,8 +377,8 @@ func phaseDetails(phase int, opts Options, extra map[string]any) map[string]any 
 // --- store plumbing ----------------------------------------------------------
 
 // openStore honors an injected store; otherwise opens (and, when owned,
-// later closes) the state file at <dataDir>/top.db — recover's documented
-// path, kept identical so diagnose finds the same file.
+// later closes) the state file at <dataDir>/top.db — the doctor's
+// documented path, kept identical so doctor finds the same file.
 func openStore(ctx context.Context, dataDir string, injected store.Store) (store.Store, bool, error) {
 	if injected != nil {
 		return injected, false, nil

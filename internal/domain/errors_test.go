@@ -55,7 +55,7 @@ func TestErrorMessagesAreReadable(t *testing.T) {
 		{
 			name: "corrupt steers to diagnose",
 			err:  CorruptError{Detail: "page 3 read error"},
-			want: "metadata corrupt: page 3 read error (hint: run `topctl recover diagnose`)",
+			want: "metadata corrupt: page 3 read error (hint: the metadata DB is reconstructible: wipe the state file and re-run topctl install; reconcile is idempotent)",
 		},
 		{
 			name: "validation with file and field",
@@ -87,9 +87,9 @@ func TestErrorMessagesAreReadable(t *testing.T) {
 func TestCorruptErrorAlwaysSuggestsDiagnose(t *testing.T) {
 	t.Parallel()
 	// A custom hint still must not replace the recover path silently;
-	// contract: callers must surface "run `topctl recover diagnose`".
+	// contract: callers must surface the reconstruction hint, never a retry.
 	e := CorruptError{Detail: "x", Hint: "restore from backup"}
-	if !strings.Contains(e.Error(), "topctl recover diagnose") && !strings.Contains(e.Error(), "restore from backup") {
+	if !strings.Contains(e.Error(), "re-run topctl install") && !strings.Contains(e.Error(), "restore from backup") {
 		t.Fatalf("corrupt hint lost: %s", e)
 	}
 }

@@ -8,7 +8,7 @@
 //   - Secret files live one-per-name with mode 0600 in a 0700 directory.
 //     A wrong-perms read is a loud, typed, fix-hinted error — never a
 //     silent success with reduced guarantees.
-//   - The store is excluded from metadata backups (ADR-0007); List() yields
+//   - List() yields
 //     names + SHA-256 checksums + mtimes only (names manifest for recovery
 //     runbooks, ADR-0013 boundary).
 package secrets

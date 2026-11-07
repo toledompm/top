@@ -31,7 +31,7 @@ import (
 //
 //	1. open the state store — a MISSING top.db is typed
 //	   ErrNothingInstalled: TOP tears down only what it can prove it
-//	    owns, and a lost store proves nothing (recover diagnose instead).
+//	    owns, and a lost store proves nothing.
 //	2. lease acquire — the serialization lease stops accepting triggers
 //	   while teardown runs (one-writer law; released on any exit).
 //	3. fresh ownership snapshot; every ledger entry goes through the
@@ -201,7 +201,7 @@ func openUninstallStore(ctx context.Context, opts UninstallOptions) (store.Store
 	}
 	path := opts.DataDir + "/" + "top.db"
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		return nil, false, fmt.Errorf("%w: no record at %s — if the store was lost, nothing here proves TOP owns anything; run `topctl recover diagnose` (operations are history, not state)",
+		return nil, false, fmt.Errorf("%w: no record at %s — if the store was lost, nothing here proves TOP owns anything (operations are history, not state)",
 			ErrNothingInstalled, path)
 	}
 	s, oerr := sqlite.Open(ctx, path)
@@ -294,7 +294,7 @@ func teardownPass(ctx context.Context, st store.Store, opts UninstallOptions, re
 			res.Removed = append(res.Removed, "storage-entry "+StorageEntryName+" (would destroy; host dir stays for the secrets/git tiers)")
 		}
 	} else {
-		res.LeftAlone = append(res.LeftAlone, "SQLite state + backups under "+opts.DataDir+" KEPT (pass --purge-data to delete; ADR-0009: kept by default)")
+		res.LeftAlone = append(res.LeftAlone, "SQLite state under "+opts.DataDir+" KEPT (pass --purge-data to delete; ADR-0009: kept by default)")
 	}
 
 	if opts.PurgeSecrets {

@@ -85,18 +85,7 @@
         "overrides": []
       }
     },
-    {
-      "id": 7,
-      "title": "SQL backup last success",
-      "type": "stat",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 9 },
-      "targets": [
-        { "refId": "A", "expr": "top_backup_last_success_timestamp", "instant": true }
-      ],
-      "fieldConfig": { "defaults": { "unit": "dateTimeAsIso", "thresholds": { "mode": "absolute", "steps": [] } }, "overrides": [] }
-    },
-    {
+        {
       "id": 8,
       "title": "Git sync",
       "type": "row",

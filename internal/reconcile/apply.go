@@ -306,7 +306,7 @@ func (r *Reconciler) applyChanges(ctx context.Context, in RunInput, svc domain.S
 			// MISSING host dir outright ("unable to stat …", tier-4
 			// verified 2026-11-03), so the dir is this apply's own
 			// precondition. MkdirAll is idempotent; the installer's wiring
-			// only provisioned {secrets,git,backups} — /volumes is
+			// only provisioned {secrets,git} — /volumes is
 			// lifecycle-owned here.
 			//
 			// Mode: core stays 0700 (TOP's own metadata, root-only).

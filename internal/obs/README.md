@@ -59,8 +59,6 @@ label set so a high-cardinality label cannot be added silently.
 | `top_git_poll_duration_seconds` | histogram | — | One poll cycle against the Git source. |
 | `top_git_poll_total` | counter | `result` | Poll cycles by outcome. |
 | `top_sqlite_operation_duration_seconds` | histogram | `operation` | State-store latency by op kind. |
-| `top_backup_last_success_timestamp` | gauge | — | Unix ts of last successful backup. |
-| `top_backup_last_verify_result` | gauge | — | Last verification: 1 ok, 0 failed. |
 | `top_build_info` | gauge | `version`, `commit` | Build metadata; always 1. |
 
 Plus the Go and process collectors on the private registry (process metrics
