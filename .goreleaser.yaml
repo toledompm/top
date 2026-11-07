@@ -5,7 +5,7 @@
 #
 #   go run github.com/goreleaser/goreleaser/v2@v2.19.0 check     # validate
 #   go run github.com/goreleaser/goreleaser/v2@v2.19.0 --snapshot --clean
-#   go run github.com/goreleaser/goreleaser/v2@v2.19.0 release    # owner only
+#   go run github.com/goreleaser/goreleaser/v2@v2.19.0 release    # CI runs it on tags (.github/workflows/release.yml)
 #
 # Pin: v2.19.0 — the latest stable v2 tag as of 2026-11-03 (v2.20.x exists
 # only as `*-nightly` tags). Re-pin deliberately.

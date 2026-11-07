@@ -40,8 +40,12 @@ git tag -a "$tag" -m "top $tag" && git push origin main "$tag"
 # 2. CI runs the release-dry job on the tag (no secrets, publishes nothing):
 #    goreleaser check + full snapshot build + smoke test of the artifact.
 #    Watch https://github.com/toledompm/top/actions (release-dry workflow).
-
-# 3. Locally, the OWNER (with rights to create GitHub releases) publishes:
+#    The release job (.github/workflows/release.yml) then PUBLISHES the
+#    GitHub Release with topctl-linux-{amd64,arm64} + checksums.txt
+#    attached automatically — with the repository's own GITHUB_TOKEN, no
+#    owner-local goreleaser run required.
+#
+# 3. Owner follow-up (only if the workflow needs manual intervention):
 export GITHUB_TOKEN="$(security find-generic-password -s top-goreleaser -w)"  # or your own secret store
 make release           # goreleaser release --clean; refuses without the token
 

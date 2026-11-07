@@ -1,0 +1,38 @@
+# Release publication job: on every version tag, goreleaser builds the
+# artifact matrix (topctl-linux-amd64/arm64 + checksums.txt, per
+# .goreleaser.yaml — binaries only, no container publishing) and ATTACHES
+# THEM TO THE GITHUB RELEASE on the tag. This is what docs/
+# operations/installation.md's install-top.sh consumes: the operator never
+# needs build deps on the hosts — artifacts flow from CI.
+#
+# Gate order: ci.yml (PRs + main) and release-dry.yml prove the recipe
+# from a clean checkout BEFORE anything is published; this job adds only
+# the publication step, which needs the repository's own GITHUB_TOKEN.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # publish the release + upload artifacts
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # goreleaser needs tags/changelog history
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: gate on the dry-run recipe passing first
+        run: |
+          go run github.com/goreleaser/goreleaser/v2@v2.19.0 check
+          make release-dry-run
+      - name: publish release artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run github.com/goreleaser/goreleaser/v2@v2.19.0 release --clean

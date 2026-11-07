@@ -18,7 +18,7 @@ help:
 	@echo "  make hygiene         ADR-0014 public/private grep"
 	@echo "  make release-check   validate .goreleaser.yaml (go run goreleaser v2, pinned)"
 	@echo "  make release-dry-run snapshot build of ALL release artifacts + checksums (secrets-free)"
-	@echo "  make release         OWNER-ONLY actual publish (needs GITHUB_TOKEN; see commands/release.md)"
+	@echo "  make release         manual publish fallback (needs GITHUB_TOKEN; CI publishes on tags — see scripts/release.md)"
 
 .PHONY: build test test-conformance vet fmt lint hygiene test-shim test-e2e-backend laws clean release-check release-dry-run release help
 
