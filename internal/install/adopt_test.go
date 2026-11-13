@@ -450,6 +450,13 @@ func (s installGitShim) RunStream(ctx context.Context, _ []string, stdout, stder
 	return s.r.RunStream(ctx, stdout, stderr, name, args...)
 }
 
+// RunEnv satisfies install's envRunner seam (the phase-0 repo probe): the
+// env is dropped like the shim's other Run — the underlying runner answers
+// by argv.
+func (s installGitShim) RunEnv(ctx context.Context, _ []string, name string, args ...string) ([]byte, []byte, error) {
+	return s.r.Run(ctx, name, args...)
+}
+
 // reconHandoff is the PRODUCTION-shaped FirstRunner (exactly the
 // composition internal/cli must wire; documented in the package README):
 // gitsource resolve → fetch → spec.LoadDir → reconcile.Run.

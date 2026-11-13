@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/toledompm/top/internal/gitsource"
+
 	"github.com/toledompm/top/internal/backend"
 	"github.com/toledompm/top/internal/backend/dokku"
 	"github.com/toledompm/top/internal/doctor"
@@ -88,6 +90,15 @@ func (e *flipRunner) RunStream(ctx context.Context, stdout, stderr io.Writer, na
 	err := e.f.RunStream(ctx, stdout, stderr, name, args...)
 	flipAfterCreate(e.f, name, args)
 	return err
+}
+
+// RunEnv satisfies install's envRunner seam (the phase-0 repo probe carries
+// GIT_SSH_COMMAND for ssh remotes); env is delegated-and-ignored — the fake
+// matches by argv.
+func (e *flipRunner) RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, []byte, error) {
+	stdout, stderr, err := e.f.RunEnv(ctx, env, name, args...)
+	flipAfterCreate(e.f, name, args)
+	return stdout, stderr, err
 }
 
 // wrappedRunner returns the shared seam (fake + flip) for one test.
@@ -671,6 +682,96 @@ func TestInstallResumesInterruptedRun(t *testing.T) {
 	if !deploySucceeded {
 		t.Errorf("the redone phase-4 must succeed and record itself")
 	}
+}
+
+// TestInstallPreflightRepoProbeCarriesDeployKey pins the 2026-11-13
+// homelab bug: an ssh remote's phase-0 reachability probe must ride the
+// operator's deploy key (GIT_SSH_COMMAND, gitsource.SSHCommand vocabulary)
+// — NOT bare ssh, which under sudo/root has no GitHub identity and made a
+// perfectly readable repo report unreachable. Also pins: https remotes
+// carry NO child environment (the empty env keeps env-less Runner
+// doubles honest).
+func TestInstallPreflightRepoProbeCarriesDeployKey(t *testing.T) {
+	t.Parallel()
+
+	// ssh remote: the probe call must record the deploy-key env. The runner
+	// is a recording+flip wrapper: envRecordRunner satisfies the envRunner
+	// seam (so the probe env is capturable) while flipAfterCreate keeps the
+	// same post-create fixture flips wrappedRunner gives the other tests.
+	frec := exectest.NewFakeRunner()
+	rec := &envRecordRunner{inner: frec}
+	rw := &recFlipRunner{e: rec, f: frec}
+	frec.SetPrefix([]string{"git", "ls-remote"}, respOK(lsRemoteOut))
+	st := testStore(t)
+	opts := testOptions(t, rw, st, frec)
+	opts.HealthTimeout = 2 * time.Second
+	seedDoctor(frec, false)
+	seedSnapshot(frec)
+	seedPhases(frec)
+
+	if _, err := Install(context.Background(), opts); err != nil {
+		t.Fatalf("install (precondition: preflight should pass with the ssh transport): %v", err)
+	}
+	var probe *envCallRecord
+	snap := rec.snapshot()
+	for i, c := range snap {
+		if c.name == "git" && len(c.args) > 0 && c.args[0] == "ls-remote" {
+			probe = &snap[i]
+		}
+	}
+	if probe == nil {
+		t.Fatal("no git ls-remote probe recorded")
+	}
+	joined := strings.Join(probe.env, " ")
+	want := "GIT_SSH_COMMAND=" + gitsource.SSHCommand(opts.DeployKey, opts.KnownHosts)
+	if !strings.Contains(joined, want) || !strings.Contains(joined, "GIT_TERMINAL_PROMPT=0") {
+		t.Errorf("probe env = %q; want GIT_TERMINAL_PROMPT=0 + %q", joined, want)
+	}
+
+	// https remote: NO environment at all (empty env contract).
+	frec2 := exectest.NewFakeRunner()
+	rec2 := &envRecordRunner{inner: frec2}
+	rw2 := &recFlipRunner{e: rec2, f: frec2}
+	frec2.SetPrefix([]string{"git", "ls-remote"}, respOK(lsRemoteOut))
+	opts2 := testOptions(t, rw2, testStore(t), frec2)
+	opts2.RepoURL = "https://git.example.com/example/platform.git"
+	opts2.HealthTimeout = 2 * time.Second
+	seedDoctor(frec2, false)
+	seedSnapshot(frec2)
+	seedPhases(frec2)
+	if _, err := Install(context.Background(), opts2); err != nil {
+		t.Fatalf("install https variant: %v", err)
+	}
+	for _, c := range rec2.snapshot() {
+		if c.name == "git" && len(c.args) > 0 && c.args[0] == "ls-remote" && len(c.env) != 0 {
+			t.Errorf("https probe env = %q, want empty", c.env)
+		}
+	}
+}
+
+// recFlipRunner composes env recording with the fixture flips: the probe
+// env assert needs the recording, the phase flow needs the flips.
+type recFlipRunner struct {
+	e *envRecordRunner
+	f *exectest.FakeRunner
+}
+
+func (r *recFlipRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	stdout, stderr, err := r.e.Run(ctx, name, args...)
+	flipAfterCreate(r.f, name, args)
+	return stdout, stderr, err
+}
+
+func (r *recFlipRunner) RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, []byte, error) {
+	stdout, stderr, err := r.e.RunEnv(ctx, env, name, args...)
+	flipAfterCreate(r.f, name, args)
+	return stdout, stderr, err
+}
+
+func (r *recFlipRunner) RunStream(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {
+	err := r.e.RunStream(ctx, stdout, stderr, name, args...)
+	flipAfterCreate(r.f, name, args)
+	return err
 }
 
 // TestInstallPreflightFailAborts: fail findings abort with

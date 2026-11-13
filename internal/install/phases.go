@@ -15,6 +15,7 @@ import (
 	"github.com/toledompm/top/internal/doctor"
 	"github.com/toledompm/top/internal/domain"
 	"github.com/toledompm/top/internal/exec"
+	"github.com/toledompm/top/internal/gitsource"
 	"github.com/toledompm/top/internal/inventory"
 	"github.com/toledompm/top/internal/store"
 	"github.com/toledompm/top/internal/store/sqlite"
@@ -559,9 +560,38 @@ func (e *RepoErr) Error() string { return e.Message }
 // permitting"). Empty → an error without --init (ADR-0005's existing-repo
 // rule; install changes nothing on the remote), but the sanctioned
 // precondition of `--init` (the seed flow, internal/install/repo_init.go).
+// sshProbeEnv renders the child environment for the phase-0 repo probe:
+// strict GIT_SSH_COMMAND over the operator's deploy key for ssh remotes
+// (same transport vocabulary as repo_init's push; the key file is
+// referenced BY PATH — TOP never reads it). HTTPS/file remotes need NO
+// child environment (empty → even an env-less Runner can carry the probe).
+func sshProbeEnv(opts Options) ([]string, error) {
+	if !isSSHRemote(opts.RepoURL) {
+		return nil, nil
+	}
+	if opts.DeployKey == "" || opts.KnownHosts == "" {
+		return nil, fmt.Errorf("install: ssh remote needs --deploy-key and --known-hosts for the reachability probe")
+	}
+	return []string{"GIT_TERMINAL_PROMPT=0", "GIT_SSH_COMMAND=" + gitsource.SSHCommand(opts.DeployKey, opts.KnownHosts)}, nil
+}
+
 func checkRepo(ctx context.Context, opts Options) error {
 	url, branch := opts.RepoURL, opts.Branch
-	_, _, err := opts.Runner.Run(ctx, "git", "ls-remote", url, branch)
+	// SSH remotes authenticate via the operator's deploy key (ADR-0008):
+	// the probe rides the SAME GIT_SSH_COMMAND transport phase 3's --init
+	// push uses — otherwise a root/sudo context (where the operator's
+	// interactive ssh config does not apply) probes github with no
+	// identity and fails loudly with "unreachable" while the repo is
+	// perfectly readable. HTTPS remotes need no ssh transport.
+	// BUG HISTORY: found 2026-11-13 live on the first homelab install
+	// (media-server): `sudo topctl install --init --deploy-key …` failed
+	// preflight with an unnamed repo/reachable failure while the same
+	// command worked from the operator shell.
+	env, err := sshProbeEnv(opts)
+	if err != nil {
+		return err
+	}
+	_, _, err = envRunnerOf(opts.Runner).RunEnv(ctx, env, "git", "ls-remote", url, branch)
 	switch {
 	case errors.Is(err, exec.ErrNotFound):
 		return &RepoErr{
@@ -581,7 +611,7 @@ func checkRepo(ctx context.Context, opts Options) error {
 	// Exit 0: for the branch pattern, exit-0 with empty stdout means the
 	// repo answered but no ref matched — empty repo / no commits on the
 	// branch.
-	out, _, _ := opts.Runner.Run(ctx, "git", "ls-remote", url, branch)
+	out, _, _ := envRunnerOf(opts.Runner).RunEnv(ctx, env, "git", "ls-remote", url, branch)
 	if strings.TrimSpace(string(out)) == "" {
 		if opts.Init {
 			return nil // empty is exactly what --init seeds (freshly re-verified in phase 3)

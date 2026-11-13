@@ -233,6 +233,17 @@ func (f *FakeRunner) run(ctx context.Context, stdin []byte, name string, args ..
 // RunStream implements the Runner contract by writing canned output into
 // the writers and returning the canned error path. Output is written in one
 // chunk, simulating a fast stream. Errors and exit codes behave like Run.
+// RunEnv satisfies install's envRunner seam: environment-carrying callers
+// (the --init push, the phase-0 repo probe) delegate to the same argv-
+// matched fake. The env itself is NOT recorded (the Call log is argv-only
+// by design — env values are the credential channel and stay out of the
+// golden surface); tests that must assert on the child env wrap
+// FakeRunner with an env-recording shim instead (see install's
+// envRecordRunner).
+func (f *FakeRunner) RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, []byte, error) {
+	return f.Run(ctx, name, args...)
+}
+
 func (f *FakeRunner) RunStream(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {
 	f.mu.Lock()
 	resp := f.matchLocked(name, args)
