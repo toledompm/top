@@ -177,9 +177,19 @@ func tarBytes(t *testing.T, files map[string]string) []byte {
 // pre-seeded) → fetch → archive(tarBytes(files)) with a permanent success
 // tail; tar is separately seeded success.
 func scriptedFetch(t *testing.T, f *envFake, files map[string]string) {
+	// THREE scripted git steps aligned to the two possible offsets: the
+	// mirror-seeded path consumes [fetch, archive] (steps 0,1); the
+	// no-mirror path consumes [clone, fetch, archive] (steps 0,1,2). Both
+	// must give the archive step tarBytes — hence tarBytes at BOTH step 1
+	// and step 2, with step 0 (clone-or-fetch) an empty success.
+	// BUG HISTORY: a two-entry script made the no-mirror archive call
+	// exhaust the script and read the EMPTY tail — which macOS's bsdtar
+	// tolerated (exit 0 on an empty archive!) while GNU tar failed with
+	// "not a tar archive" (CI, 2026-11-07).
 	f.inner.SetScriptedPrefix([]string{"git"}, []exectest.Response{
-		{},                           // fetch
-		{Stdout: tarBytes(t, files)}, // archive
+		{},                           // clone (unseeded path only)
+		{Stdout: tarBytes(t, files)}, // archive (seeded path)
+		{Stdout: tarBytes(t, files)}, // archive (unseeded path)
 	}, exectest.Response{})
 	f.inner.SetPrefix([]string{"tar"}, exectest.Response{})
 }

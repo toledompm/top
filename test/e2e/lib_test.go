@@ -25,7 +25,7 @@ import (
 // runLib executes a snippet under sh with lib.sh sourced; returns output.
 func runLib(t *testing.T, snippet string) (string, string, error) {
 	t.Helper()
-	script := ". " + shellQuote(filepath.Join(".", "lib.sh")) + "\n" + snippet
+	script := ". " + shellQuote("./lib.sh") + "\n" + snippet // ./ prefix: POSIX `.` searches PATH only (dash); cwd-relative is a bash-ism
 	cmd := exec.Command("sh", "-c", script)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
