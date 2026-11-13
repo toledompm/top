@@ -14,6 +14,8 @@ linters:
     - unused
 
 formatters:
-  default: none
+  # `default` is a linters-section key in the v2.1.6 schema (formatters
+  # takes gofumpt's own settings via `settings`, and CI's `config verify`
+  # rejects the field here) — gofumpt is the only formatter we run.
   enable:
     - gofumpt
