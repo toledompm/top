@@ -248,6 +248,21 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
 - **T-603 tier-3 ssh-container twin.** sshd container + real verbs
   against a Dokku container; M6 acceptance 1+2+5 evidence. Deps: T-602.
   Tests: tier 3 (disposable). Agent: test.
+- **T-600 Homelab bootstrap UX: repo + keys setup script (gh-assisted).**
+  BEFORE M6 (prototype-feedback priority, owner 2026-11-13): a
+  `scripts/bootstrap-repo.sh`-style flow that (a) creates the private
+  platform repo via `gh repo create --private` (or local git+bare remote
+  fallback), (b) generates the dedicated deploy key + known_hosts, (c)
+  registers it as a deploy key via `gh api` (write-access flag toggled
+  around `--init` automatically, then flipped read-only), and (d) for the
+  steps that CANNOT be automated (browser-only pages, e.g. the webhook
+  secret screen), prints a direct deep-link URL and blocks until the
+  operator confirms the value is pasted back. Motivation: the first live
+  homelab install (2026-11-13, media-server) surfaced this as the
+  highest-friction step — manual key/page juggling ahead of `topctl
+  install --init`. Deps: gh CLI on the operator's machine. Tests: tier 1
+  (sh -n + fixture runs). Agent: cli-go.
+
 - **T-604 Owner docs pass.** Remote ops runbook (homelab flow from the
   operator's machine) + contracts rows (`--host`). Deps: T-602. Agent:
   docs.
