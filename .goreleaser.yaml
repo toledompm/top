@@ -22,9 +22,33 @@
 # (docs/operations/installation.md); macOS is a development-only tier and is
 # excluded from releases.
 #
-# No docker/image publishing: TOP steers SERVICE images at Dokku
-# (`git:from-image` / `git:sync`), not at a container registry; topctl is a
-# single binary installed on the host. Keep release = binaries + checksums.
+# Docker: the CONTROLLER image (the one thing a Dokku host must pull to
+# bootstrap itself, ADR-0005) ships from the same release: topctl in a
+# minimal runtime image, tagged with the version. Service images remain
+# Dokku-routed (git:from-image drives whatever the SPEC names); only TOP's
+# own bootstrap artifact needs a registry home — and CI builds it, so the
+# hosts never do.
+dockers:
+  - image_templates:
+      - "ghcr.io/toledompm/top/topctl:{{ .Version }}"
+      - "ghcr.io/toledompm/top/topctl:bootstrap-pinned"
+    dockerfile: cmd/topctl/Dockerfile
+    extra_files:
+      - cmd/topctl/dokku-shim
+    build_flag_templates:
+      - "--label=org.opencontainers.image.source=https://github.com/toledompm/top"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+    goarch: amd64
+  - image_templates:
+      - "ghcr.io/toledompm/top/topctl:{{ .Version }}-arm64"
+    dockerfile: cmd/topctl/Dockerfile
+    extra_files:
+      - cmd/topctl/dokku-shim
+    build_flag_templates:
+      - "--label=org.opencontainers.image.source=https://github.com/toledompm/top"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+    goarch: arm64
+
 version: 2
 
 project_name: top

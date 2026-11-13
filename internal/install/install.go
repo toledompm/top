@@ -81,15 +81,15 @@ const (
 var DataDirDefault = doctor.DefaultDataDir
 
 // DefaultControllerImage / DefaultControllerTag pin the bootstrap deploy
-// (ADR-0005 "bootstrap pins a specific version"). The pair composes to the
-// fictional-but-formatted reference format TOP uses everywhere
-// ("ghcr.io/example/top/topctl: bootstrap-pinned"; no real registry —
-// committed examples are fictional, ADR-0014-style). Bumping either is a
-// conscious release decision: the bootstrap deploy and the next install
-// must agree.
+// (ADR-0005 "bootstrap pins a specific version"). The pair is the REAL
+// public artifact the CI release job publishes
+// (ghcr.io/toledompm/top/topctl:<version>, cmd/topctl/Dockerfile): the
+// bootstrap deploy and the next install must agree. "bootstrap-pinned" is
+// the rolling alias the release job also pushes. Bumping either is a
+// conscious release decision.
 var (
-	DefaultControllerImage = "ghcr.io/example/top/topctl"
-	DefaultControllerTag   = "bootstrap-pinned"
+	DefaultControllerImage = "ghcr.io/toledompm/top/topctl"
+	DefaultControllerTag   = "v0.1.0"
 )
 
 // Typed failure classes. The CLI maps them onto docs/contracts/cli.md exit

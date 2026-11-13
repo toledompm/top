@@ -403,6 +403,24 @@ func runBootstrapDeploy(ctx context.Context, opts Options, st store.Store, opID 
 	}
 	res.Created = append(res.Created, "mount "+StorageEntryName+":"+opts.DataDir+" → "+app)
 
+	// Docker-socket mount (deploy stage): the controller container has no
+	// dokku CLI — its PATH shim drives the HOST's dokku through the Docker
+	// daemon socket (`docker exec <runtime> dokku …`, cmd/topctl/dokku-shim;
+	// the tier-3/4 e2e harnesses verified this shape 2026-11-03, the live
+	// homelab install forced it into the product 2026-11-13). Idempotent:
+	// only add when the deploy-stage options don't already carry the mount.
+	sockMount := "-v /var/run/docker.sock:/var/run/docker.sock"
+	if out, _, rerr := opts.Runner.Run(ctx, "dokku", "docker-options:report", app, "--format", "json"); rerr == nil {
+		if !strings.Contains(string(out), "/var/run/docker.sock") {
+			if _, _, aerr := opts.Runner.Run(ctx, "dokku", "docker-options:add", app, "deploy", sockMount); aerr != nil {
+				return fmt.Errorf("docker-options add socket mount: %w", aerr)
+			}
+			res.Created = append(res.Created, "docker-options deploy "+sockMount+" → "+app+" (controller dokku-shim transport)")
+		}
+	} else {
+		return fmt.Errorf("docker-options report %s: %w (needed to wire the controller's dokku-shim transport)", app, rerr)
+	}
+
 	// The deploy body. DeployImage failure surfaces its own adapter error
 	// text; the type-carrying layer above marks the phase op bootstrap-failed.
 	if err := opts.Backend.DeployImage(ctx, ref, opts.ImageRef()); err != nil {

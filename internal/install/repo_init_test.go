@@ -555,11 +555,11 @@ func TestInitIntegrationRealGitRemote(t *testing.T) {
 func TestTemplateRenderIsIdempotent(t *testing.T) {
 	t.Parallel()
 	a, b := t.TempDir(), t.TempDir()
-	n1, err := renderTemplate(a, "ghcr.io/example/top/topctl:bootstrap-pinned")
+	n1, err := renderTemplate(a, "ghcr.io/toledompm/top/topctl:v0.1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := renderTemplate(b, "ghcr.io/example/top/topctl:bootstrap-pinned")
+	n2, err := renderTemplate(b, "ghcr.io/toledompm/top/topctl:v0.1.0")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -35,7 +35,7 @@ const (
 	branch         = "main"
 	dkVerOut       = "dokku version 0.38.32 (git commit a11d15d)"
 	dockerVer      = "27.0.3"
-	imageRef       = "ghcr.io/example/top/topctl:bootstrap-pinned"
+	imageRef       = "ghcr.io/toledompm/top/topctl:v0.1.0"
 	lsRemoteOut    = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\trefs/heads/main"
 	psDeployedJSON = `{"app":"core-top-controller","deployed":"true","running":"true","processes":"1"}`
 	etcRelease     = "ID=ubuntu\nVERSION_ID=24.04\n"
@@ -193,6 +193,10 @@ func seedRepo(f *exectest.FakeRunner) {
 // seedPhases wires the mutating-phase dokku verbs plus the health-wait
 // report set (deployed+running at the first poll).
 func seedPhases(f *exectest.FakeRunner) {
+	// Controller docker-options: the socket mount ALREADY present → the
+	// bootstrap wiring is a verified idempotent skip (the fresh-install
+	// add path has its own test below).
+	f.SetPrefix([]string{"dokku", "docker-options:report"}, respOK(`{"docker-options":{"deploy":["-v /var/run/docker.sock:/var/run/docker.sock"]}}`))
 	f.SetPrefix([]string{"dokku", "network:exists"}, respExit(1))
 	f.SetPrefix([]string{"dokku", "network:create"}, respOK("1"))
 	f.SetPrefix([]string{"dokku", "storage:info"}, respExit(1))
@@ -853,6 +857,59 @@ func TestInstallDokkuBootstrapGoldenArgv(t *testing.T) {
 	} {
 		if !slices.Contains(got, want) {
 			t.Errorf("gated-dokku argv missing %q; got:\n%s", want, strings.Join(got, "\n"))
+		}
+	}
+}
+
+// TestInstallBootstrapSocketMountAddAndIdempotence: the controller's
+// dokku-shim transport needs the Docker socket mounted at deploy stage.
+// Fresh install (report lacks the mount) → exactly ONE docker-options:add;
+// re-install (report already carries it) → no add, no duplicate.
+func TestInstallBootstrapSocketMountAddAndIdempotence(t *testing.T) {
+	t.Parallel()
+	f := exectest.NewFakeRunner()
+	r := wrappedRunner(f)
+	st := testStore(t)
+	opts := testOptions(t, r, st, f)
+	opts.HealthTimeout = 2 * time.Second
+	seedDoctor(f, false)
+	seedRepo(f)
+	seedSnapshot(f)
+	seedPhases(f)
+	seedPhases(f) // second copy harmless
+	// fresh: report WITHOUT the socket → the wiring adds it.
+	f.SetPrefix([]string{"dokku", "docker-options:report"}, respOK(`{"docker-options":{"deploy":[]}}`))
+	f.SetPrefix([]string{"dokku", "docker-options:add"}, respOK("1"))
+
+	if _, err := Install(context.Background(), opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	adds := 0
+	for _, c := range f.Recorded() {
+		if c.Name == "dokku" && len(c.Args) > 1 && c.Args[0] == "docker-options:add" {
+			adds++
+		}
+	}
+	if adds != 1 {
+		t.Fatalf("docker-options:add ran %d times on a fresh install, want 1", adds)
+	}
+
+	// idempotent: report already carries the mount → zero adds.
+	f2 := exectest.NewFakeRunner()
+	r2 := wrappedRunner(f2)
+	opts2 := testOptions(t, r2, testStore(t), f2)
+	opts2.HealthTimeout = 2 * time.Second
+	seedDoctor(f2, false)
+	seedRepo(f2)
+	seedSnapshot(f2)
+	seedPhases(f2)
+	if _, err := Install(context.Background(), opts2); err != nil {
+		t.Fatalf("re-install: %v", err)
+	}
+	for _, c := range f2.Recorded() {
+		if c.Name == "dokku" && len(c.Args) > 1 && c.Args[0] == "docker-options:add" {
+			t.Errorf("docker-options:add ran on an already-wired install (idempotence broken)")
+			break
 		}
 	}
 }

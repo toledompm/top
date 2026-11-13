@@ -17,7 +17,7 @@ import (
 // name is core-top-controller, derived by domain.AppName like everywhere.
 var ctlRef = domain.Ref("core", "top-controller")
 
-func theImage() string { return "ghcr.io/example/top/topctl:bootstrap-pinned" }
+func theImage() string { return "ghcr.io/toledompm/top/topctl:v0.1.0" }
 
 func TestDeployImageGoldenArgv(t *testing.T) {
 	t.Parallel()

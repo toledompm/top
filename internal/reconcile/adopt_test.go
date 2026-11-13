@@ -171,13 +171,13 @@ func TestAdoptSelfImageDriftHumanGated(t *testing.T) {
 	// Bootstrap image != desired image (tag bumped in the spec).
 	fb.seed(SelfRef, func(a *fakeApp) {
 		a.deployed, a.running = true, true
-		a.image = "ghcr.io/example/top/topctl:bootstrap-pinned"
+		a.image = "ghcr.io/toledompm/top/topctl:v0.1.0"
 		a.env["TZ"] = "UTC"
 	})
 	svc := selfSpec("", nil)
 	svc.Source.Tag = "v2" // new controller revision in git
 
-	res, err := runSelf(t, fs, fb, svc, bootstrapObserved(SelfRef, "ghcr.io/example/top/topctl:bootstrap-pinned"))
+	res, err := runSelf(t, fs, fb, svc, bootstrapObserved(SelfRef, "ghcr.io/toledompm/top/topctl:v0.1.0"))
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}

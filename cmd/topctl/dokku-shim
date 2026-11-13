@@ -1,0 +1,12 @@
+#!/bin/sh
+# dokku-shim — the PRODUCT controller image's dokku PATH shim: the daemon
+# runs inside a Dokku app container (no dokku CLI of its own) and drives
+# the HOST's dokku through the Docker daemon socket mounted at
+# /var/run/docker.sock (installer wiring, docker-options deploy mount).
+# Argv-transparent: every verb is `docker exec <host-container> dokku $@` —
+# the same exec discipline the adapter has (argv-only, no shell).
+#
+# The host container name is the installer's decision (it names the dokku
+# runtime container during bootstrap wiring; the default below is the
+# generic dokku CLI container shape). SPDX-License-Identifier: MIT
+exec docker exec -i "${TOP_DOKKU_HOST:-dokku}" dokku "$@"
