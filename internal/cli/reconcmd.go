@@ -264,9 +264,10 @@ func (c *cctx) orReconciler(st store.Store) (*reconcile.Reconciler, error) {
 // runInput assembles the reconciler's input from resolved desired state.
 // Actor is user (a human through the CLI); the lease holder identifies the
 // CLI (T-310 owns the final holder-id canon). Confirm is the --confirm
-// side of the ADR-0009 consent pair; VolumeRoot deliberately stays unset —
-// config has no volume root field yet, so storage changes fail contained
-// with the ADR-0009 refusal (open item, M3 review).
+// side of the ADR-0009 consent pair. VolumeRoot mirrors the controller
+// daemon's default (controller.OptionsFromConfig: <dataDir>/volumes) —
+// storage-bearing specs refuse to apply without it (ADR-0009), and the
+// live homelab first-reconcile hit exactly that refusal (2026-11-14).
 func (c *cctx) runInput(d desired, prune, confirm bool) reconcile.RunInput {
 	return reconcile.RunInput{
 		Specs:         d.specs,
@@ -278,6 +279,7 @@ func (c *cctx) runInput(d desired, prune, confirm bool) reconcile.RunInput {
 		Confirm:       confirm,
 		Namespaces:    c.cfg.Namespaces.Order,
 		Sources:       d.sources,
+		VolumeRoot:    c.cfg.DataDir + "/volumes",
 	}
 }
 

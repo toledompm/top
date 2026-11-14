@@ -1,7 +1,8 @@
 # observability/cadvisor.yaml — per-container metrics (ADR-0010: justified
 # because Dokku apps are plain Docker containers; without cAdvisor there is
 # no per-app resource view).
-# The digest below is FICTIONAL; replace with a real pin before deploying.
+# Pinned to the real upstream release (T-605, 2026-11-14): cadvisor moved
+# to ghcr.io/google/cadvisor at v0.53.0; the tag is the real version tag.
 apiVersion: top/v1alpha1
 kind: Service
 metadata:
@@ -9,8 +10,8 @@ metadata:
   namespace: observability
 spec:
   source:
-    image: gcr.io/cadvisor/cadvisor
-    digest: sha256:3333333333333333333333333333333333333333333333333333333333333333 # fictional — pin a real digest before deploying
+    image: ghcr.io/google/cadvisor
+    tag: v0.60.6
   ports:
     - { name: http, containerPort: 8080 }
   routing:

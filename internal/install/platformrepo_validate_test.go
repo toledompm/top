@@ -57,10 +57,6 @@ func renderTemplateIntoTemp(t *testing.T) string {
 	return dir
 }
 
-// flossDigestRe matches the template's fictional digest bodies (all-zero
-// and repeated-digit hex — obviously non-runnable, per ADR-0014 discipline).
-var flossDigestRe = regexp.MustCompile(`^sha256:(000[0-9]|1111|2222|3333)[0-9a-f]*$`)
-
 func TestTemplateFleetIsCompleteAndValid(t *testing.T) {
 	t.Parallel()
 	res := loadTemplateFleet(t)
@@ -93,7 +89,7 @@ func loadedNames(res spec.Result) string {
 	return strings.Join(got, ", ")
 }
 
-func TestTemplateFleetIsFullyDigestPinned(t *testing.T) {
+func TestTemplateFleetIsRealVersionPinned(t *testing.T) {
 	t.Parallel()
 	res := loadTemplateFleet(t)
 	for _, s := range res.Services {
@@ -110,18 +106,29 @@ func TestTemplateFleetIsFullyDigestPinned(t *testing.T) {
 			}
 			continue
 		}
-		if s.Source.Digest == "" {
-			t.Errorf("%s: platform-repo specs must pin digests (immutable-revisions contract); got mutable image %q", s.Ref, s.Source.Image)
-		} else if !flossDigestRe.MatchString(s.Source.Digest) {
-			t.Errorf("%s: platform-repo template digests must stay fictional discipline zero/repeated-digit style (ADR-0014), got %q", s.Ref, s.Source.Digest)
+		// T-605 (2026-11-14): observability specs pin REAL upstream
+		// VERSION TAGS (the fictional zero-digest placeholders were
+		// undeployable — the live homelab install proved it). A tag must
+		// be present and must NOT be a mutable floating alias.
+		if s.Source.Tag == "" {
+			t.Errorf("%s: platform-repo specs must pin a real version tag (T-605); got bare image %q", s.Ref, s.Source.Image)
+		}
+		for _, floating := range []string{"latest", "main", "master"} {
+			if strings.EqualFold(s.Source.Tag, floating) {
+				t.Errorf("%s: tag %q is a mutable floating alias; pin a real version", s.Ref, s.Source.Tag)
+			}
 		}
 	}
-	// Warnings allowed: exactly the one deliberate mutable-tag warning on the
-	// controller's bootstrap pin. Everything else must be warning-free.
+	// Warnings allowed: the deliberate mutable-tag warning on the
+	// controller's bootstrap pin, plus the T-605 version-tag warnings on
+	// the observability fleet (real version tags, not floating aliases —
+	// the loader still recommends digest-pinning, which the operator can
+	// tighten later; the fictional zero-digests were undeployable).
 	for _, w := range res.Warnings {
-		ok := w.Path == "core/top-controller.yaml" && w.Code == spec.WarnMutableTag && w.Field == "spec.source"
-		if !ok {
-			t.Errorf("template spec warning in %s at %s: %s: %s (only the controller's deliberate bootstrap mutable-tag is allowed)",
+		isControllerBootstrap := w.Path == "core/top-controller.yaml" && w.Code == spec.WarnMutableTag && w.Field == "spec.source"
+		isObservabilityVersion := strings.HasPrefix(w.Path, "observability/") && w.Code == spec.WarnMutableTag && w.Field == "spec.source.tag"
+		if !isControllerBootstrap && !isObservabilityVersion {
+			t.Errorf("template spec warning in %s at %s: %s: %s (only deliberate version-tag pins are allowed)",
 				w.Path, w.Field, w.Code, w.Message)
 		}
 	}

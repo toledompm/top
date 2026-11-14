@@ -52,6 +52,10 @@ type installFirstRun struct {
 	// secrets is the host-file provider when the caller's config uses it
 	// (ADR-0008's v0); nil for other kinds (contained failure at apply).
 	secrets reconcile.SecretResolver
+	// cfg feeds the RunInput's VolumeRoot default (<dataDir>/volumes —
+	// storage-bearing specs refuse un-owned host dirs, ADR-0009; live
+	// homelab install, 2026-11-14).
+	cfg config.Config
 }
 
 // FirstRun implements install.FirstRunner. It reports ControllerSpec and
@@ -107,6 +111,11 @@ func (h installFirstRun) FirstRun(ctx context.Context) (install.FirstRunReport, 
 		Revision:   sha,
 		Actor:      domain.ActorUser,
 		Namespaces: h.nss,
+		// Same default the controller daemon uses (controller.
+		// OptionsFromConfig): storage-bearing specs need a TOP-owned
+		// VolumeRoot or apply refuses un-owned host dirs (ADR-0009) —
+		// the live homelab first-reconcile hit exactly that refusal.
+		VolumeRoot: h.cfg.DataDir + "/volumes",
 	})
 	rep := install.FirstRunReport{
 		Revision:       sha,
@@ -141,5 +150,6 @@ func (c *cctx) wireFirstRun(repoURL string) install.FirstRunner {
 		stPath:  c.cfg.DataDir + "/top.db",
 		nss:     c.cfg.Namespaces.Order,
 		secrets: secretProvider,
+		cfg:     c.cfg,
 	}
 }

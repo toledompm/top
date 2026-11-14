@@ -1,5 +1,6 @@
 # observability/node-exporter.yaml — host metrics (ADR-0010 stack).
-# The digest below is FICTIONAL; replace with a real pin before deploying.
+# Pinned to the real upstream release (T-605, 2026-11-14): node_exporter
+# v1.12.1 (2026-07).
 apiVersion: top/v1alpha1
 kind: Service
 metadata:
@@ -8,7 +9,7 @@ metadata:
 spec:
   source:
     image: quay.io/prometheus/node-exporter
-    digest: sha256:2222222222222222222222222222222222222222222222222222222222222222 # fictional — pin a real digest before deploying
+    tag: v1.12.1
   ports:
     - { name: http, containerPort: 9100 }
   routing:

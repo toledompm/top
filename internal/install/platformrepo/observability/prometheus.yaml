@@ -3,9 +3,8 @@
 # whether or not the controller exists; nothing in reconcile reads it
 # (observability independence, ADR-0010).
 #
-# The digest below is FICTIONAL — a valid-shape zero digest standing in for
-# a real pin. Replace it with a digest you actually want to run before
-# enabling this service on a host.
+# Pinned to the real upstream release (T-605, 2026-11-14): prometheus
+# v3.16.0 (latest stable, 2026-11-04; the 3.13.x line is the LTS).
 #
 # Config delivery (T-403, wired): the scrape config file lives in
 # prometheus-config/ and ships to the container through the `config`
@@ -24,7 +23,7 @@ metadata:
 spec:
   source:
     image: docker.io/prom/prometheus
-    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000 # fictional — pin a real digest before deploying
+    tag: v3.16.0
   ports:
     - { name: http, containerPort: 9090 }
   routing:
