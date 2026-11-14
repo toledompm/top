@@ -98,10 +98,6 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 	kh := filepath.Join(home, ".ssh", "top_known_hosts")
 	haveKey := fileExists(key) && fileExists(kh)
 	sshProbe := func(repo string) bool {
-		if !haveKey && key != "" {
-			// no key material yet — the caller's Runner probe is the
-			// best we can do (public repos only)
-		}
 		cmd := exec.Command("git", "ls-remote", "git@github.com:"+ownerRepo+".git", "HEAD")
 		cmd.Env = append(os.Environ(),
 			"GIT_TERMINAL_PROMPT=0",
