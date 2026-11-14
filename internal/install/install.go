@@ -273,9 +273,16 @@ func (o *Options) applyDefaults() {
 	// v0.1.2 topctl bootstraps the v0.1.2 controller (owner, 2026-11-14
 	// — the pinned v0.1.0 default made every fresh install start one
 	// release behind and forced a manual self-deploy advance). The
-	// constants stay as the no-version fallback (tests).
+	// constants stay as the no-version fallback (tests). The image tags
+	// are v-prefixed while goreleaser's injected version string is NOT
+	// (0.1.2 vs v0.1.2 — the first real run hit "manifest unknown" on
+	// the un-prefixed tag) — normalize here.
 	if o.ControllerTag == "" && o.InitVersion != initVersionDefault {
-		o.ControllerTag = o.InitVersion
+		tag := o.InitVersion
+		if !strings.HasPrefix(tag, "v") {
+			tag = "v" + tag
+		}
+		o.ControllerTag = tag
 	}
 	if o.InitAuthorName == "" {
 		o.InitAuthorName = initAuthorNameDefault
