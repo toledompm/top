@@ -29,7 +29,10 @@ import (
 )
 
 // repoExists reports whether the GitHub repo is reachable: gh first
-// (authoritative even for private repos), then a plain ls-remote.
+// (authoritative even for private repos), then a plain ls-remote with
+// every credential prompt disabled — the https fallback on a MISSING
+// private repo makes git ask for a username and hang the TTY (live
+// probe, 2026-11-14). A prompt-refused probe = "not reachable".
 func repoExists(ctx context.Context, r runnerArgs, ownerRepo string) bool {
 	if _, err := exec.LookPath("gh"); err == nil {
 		out, err := exec.Command("gh", "repo", "view", ownerRepo, "--json", "name").CombinedOutput()
@@ -38,7 +41,10 @@ func repoExists(ctx context.Context, r runnerArgs, ownerRepo string) bool {
 			return true
 		}
 	}
-	return r(ctx, "git", "ls-remote", "https://github.com/"+ownerRepo, "HEAD") == nil
+	cmd := exec.Command("git", "ls-remote", "https://github.com/"+ownerRepo, "HEAD")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
+	_, err := cmd.CombinedOutput()
+	return err == nil
 }
 
 // createRepoViaGH creates the private repo through gh (may print a
