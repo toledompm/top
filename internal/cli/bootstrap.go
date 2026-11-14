@@ -80,18 +80,18 @@ func deepLinkNewRepo(name string, visibility string) string {
 // were already satisfied / overridden". declined is true when the
 // operator declined a creation the strict path then needs (the caller
 // exits 1 with the honest message).
-func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noRepoCreate bool) (deployKey, knownHosts string, declined bool, err error) {
+func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noRepoCreate bool) (deployKey, knownHosts string, declined bool, declineReason string, err error) {
 	if !isInteractiveTTY() {
-		return "", "", false, nil
+		return "", "", false, "", nil
 	}
 	ownerRepo, ok := ownerRepoOf(repoURL)
 	if !ok {
-		return "", "", false, nil // not a GitHub repo — nothing to bootstrap
+		return "", "", false, "", nil // not a GitHub repo — nothing to bootstrap
 	}
 	needRepo := !repoExists(ctx, r, ownerRepo)
 	if needRepo && noRepoCreate {
 		declined = true
-		return "", "", declined, nil
+		return "", "", declined, "repo creation declined via --no-repo-create", nil
 	}
 	if needRepo {
 		visibility := askChoice("Repo "+ownerRepo+" does not exist. Create it — visibility?", []string{"private", "public"}, "private")
@@ -107,7 +107,7 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 		}
 		if !repoExists(ctx, r, ownerRepo) {
 			declined = true
-			return "", "", declined, nil
+			return "", "", declined, "the platform repo still does not exist after the creation step", nil
 		}
 	}
 
@@ -118,15 +118,15 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 	key := filepath.Join(home, ".ssh", "top_deploy_key")
 	kh := filepath.Join(home, ".ssh", "top_known_hosts")
 	if fileExists(key) && fileExists(kh) {
-		return key, kh, false, nil
+		return key, kh, false, "", nil
 	}
 	fmt.Printf("▸ generating deploy key %s + pinned %s\n", key, kh)
 	if err := generateDeployKeyMaterial(key, kh); err != nil {
-		return "", "", false, fmt.Errorf("deploy key generation: %w", err)
+		return "", "", false, "", fmt.Errorf("deploy key generation: %w", err)
 	}
 	pub, err := os.ReadFile(key + ".pub")
 	if err != nil {
-		return "", "", false, fmt.Errorf("read %s.pub: %w", key, err)
+		return "", "", false, "", fmt.Errorf("read %s.pub: %w", key, err)
 	}
 	registered := false
 	if ghAvailable() {
@@ -144,10 +144,10 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 		waitForEnter("Press ENTER once the key is added")
 	}
 	if err := verifyDeployKey(key, kh); err != nil {
-		return "", "", false, fmt.Errorf("GitHub did not accept the deploy key (read-write? right repo?): %w", err)
+		return "", "", true, "the deploy key is registered but GitHub rejected it (read-write? right repo?)", err
 	}
 	fmt.Println("✓ GitHub reachable with the deploy key")
-	return key, kh, false, nil
+	return key, kh, false, "", nil
 }
 
 // ownerRepoOf extracts "owner/repo" from a github remote URL (ssh or

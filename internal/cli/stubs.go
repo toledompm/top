@@ -135,13 +135,13 @@ func newInstallCmd(c *cctx) *cobra.Command {
 					_, _, err := c.orRunner().Run(ctx, name, args...)
 					return err
 				})
-				dk, kh, declined, berr := interactiveBootstrap(cmd.Context(), probeR, args[0], flagBool(cmd, "no-repo-create"))
+				dk, kh, declined, declineReason, berr := interactiveBootstrap(cmd.Context(), probeR, args[0], flagBool(cmd, "no-repo-create"))
 				if berr != nil {
 					return c.emitErrCode(cmd, "failed", ExitFailed, berr.Error())
 				}
 				if declined {
 					return c.emitErrCode(cmd, "failed", ExitFailed,
-						fmt.Sprintf("repo %s does not exist and creation was declined (--no-repo-create); create it (or drop the override) and re-run", args[0]))
+						fmt.Sprintf("bootstrap incomplete: %s; resolve it and re-run (create the repo, or register the deploy key)", declineReason))
 				}
 				if dk != "" && flagString(cmd, "deploy-key") == "" {
 					_ = cmd.Flags().Set("deploy-key", dk)
