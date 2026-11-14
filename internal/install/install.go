@@ -166,6 +166,10 @@ type Options struct {
 	// TOP_INIT_TOKEN environment AT RUNTIME — never a flag, never a file
 	// TOP stores, never logged, never on argv (ADR-0008/0005).
 	InitToken string
+	// Progress receives one human line per install stage (phase
+	// start/skip) for the CLI to render live; nil = silent (tests).
+	Progress func(stage string)
+
 	// InitVersion stamps the seed commit message ("TOP <version>"); the
 	// CLI passes the build stamp.
 	InitVersion string
@@ -264,6 +268,14 @@ func (o *Options) applyDefaults() {
 	}
 	if o.InitVersion == "" {
 		o.InitVersion = initVersionDefault
+	}
+	// The bootstrap controller image advances WITH the installer: a
+	// v0.1.2 topctl bootstraps the v0.1.2 controller (owner, 2026-11-14
+	// — the pinned v0.1.0 default made every fresh install start one
+	// release behind and forced a manual self-deploy advance). The
+	// constants stay as the no-version fallback (tests).
+	if o.ControllerTag == "" && o.InitVersion != initVersionDefault {
+		o.ControllerTag = o.InitVersion
 	}
 	if o.InitAuthorName == "" {
 		o.InitAuthorName = initAuthorNameDefault

@@ -490,3 +490,44 @@ func stderrExcerpt(err error, max int) string {
 	}
 	return s
 }
+
+// writeRuntimeConfigIfAbsent seeds <dataDir>/top-config.yaml on first
+// install (0600): the git remote install just seeded, the reserved
+// namespaces, and the daemon cadence — the operator edits it, but should
+// never have to author it (T-600, live homelab 2026-11-14: the daemon
+// polled an EMPTY git url until the operator hand-wrote a config it
+// could not have known the shape of). The controller reads this same
+// file (cli --config default resolution), so the daemon and every CLI
+// verb see the install's own repo from the first start.
+func writeRuntimeConfigIfAbsent(opts Options, res *Result) error {
+	path := opts.DataDir + "/top-config.yaml"
+	if _, err := os.Stat(path); err == nil {
+		return nil // operator-owned once it exists
+	}
+	// A resumed run may reach phase 6 with the DataDir not yet created
+	// (a phase-1 skip over a pre-filesystem interruption) — the config
+	// write must not be the thing that fails then.
+	if err := os.MkdirAll(opts.DataDir, 0o700); err != nil {
+		return fmt.Errorf("datadir %s: %w", opts.DataDir, err)
+	}
+	body := fmt.Sprintf(`# Written by topctl install (TOP %s) — the runtime config the
+# controller daemon and every CLI verb read. Edit freely; install never
+# overwrites an existing file.
+apiVersion: top/v1alpha1
+git:
+  url: %s
+  branch: %s
+controller:
+  pollIntervalSeconds: 60
+  reconcileIntervalSeconds: 300
+secretsProvider:
+  kind: hostfile
+namespaces:
+  reserved: [%s]
+`, opts.InitVersion, opts.RepoURL, opts.Branch, strings.Join(opts.Namespaces, ", "))
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("write runtime config %s: %w", path, err)
+	}
+	res.Created = append(res.Created, "file "+path+" (0600; runtime config)")
+	return nil
+}

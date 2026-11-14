@@ -70,6 +70,10 @@ type FirstRunReport struct {
 	// Status is the run's own status string (recorded on the phase op
 	// for diagnosis when Succeeded is false; "" when no run happened).
 	Status string
+	// Notes are operator-facing lines from the handoff (e.g. generated
+	// secrets), surfaced on the install envelope. Values NEVER ride
+	// here — file paths only (ADR-0008).
+	Notes []string
 }
 
 // FirstRunner is the phase-5 seam: ONE reconciliation pass over the
@@ -141,6 +145,7 @@ func runFirstReconcile(ctx context.Context, opts Options, st store.Store, opID s
 	extra["firstRunOp"] = rep.RunID
 	extra["firstRunRevision"] = rep.Revision
 	extra["firstRunStatus"] = rep.Status
+	res.Notes = append(res.Notes, rep.Notes...)
 
 	if !rep.ControllerSpec {
 		return adoptSkipped(res, extra, app,

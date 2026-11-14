@@ -25,7 +25,11 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/toledompm/top/internal/backend/dokku"
 	"github.com/toledompm/top/internal/config"
@@ -85,6 +89,7 @@ func (h installFirstRun) FirstRun(ctx context.Context) (install.FirstRunReport, 
 	if err != nil {
 		return install.FirstRunReport{}, fmt.Errorf("loading specs from revision %s: %w", sha, err)
 	}
+	notes := h.ensureSpecSecrets(loaded.Services)
 	selfSpec := false
 	for _, svc := range loaded.Services {
 		if svc.Ref.Equal(install.ControllerRef()) {
@@ -132,11 +137,60 @@ func (h installFirstRun) FirstRun(ctx context.Context) (install.FirstRunReport, 
 		ControllerSpec: selfSpec,
 		Succeeded:      err == nil && out.Status == domain.RunSucceeded,
 		Status:         out.Status.String(),
+		Notes:          notes,
 	}
 	if err != nil {
 		return rep, err
 	}
 	return rep, nil
+}
+
+// ensureSpecSecrets generates a random host-file secret for every
+// spec-declared secretRef the operator has not provisioned (T-600, live
+// homelab 2026-11-14: the seeded grafana spec's admin-password ref made
+// EVERY first reconcile fail until the operator hand-created a file
+// whose path and name were only documented in a README). Values never
+// print — the note names the file; the operator reads it when needed.
+// Existing secrets are never touched (generation is first-miss only).
+func (h installFirstRun) ensureSpecSecrets(svcs []domain.Service) []string {
+	if h.secrets == nil {
+		return nil
+	}
+	dir := h.cfg.SecretsDir()
+	var notes []string
+	seen := map[string]bool{}
+	for _, svc := range svcs {
+		for _, name := range svc.SecretRefs {
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			if _, _, rerr := h.secrets.Resolve(context.Background(), name); rerr == nil {
+				continue
+			}
+			value, err := randomSecret()
+			if err != nil {
+				notes = append(notes, "secret "+name+": generation failed ("+err.Error()+"); create it at "+dir+"/"+name)
+				continue
+			}
+			if werr := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); werr != nil {
+				notes = append(notes, "secret "+name+": write failed ("+werr.Error()+")")
+				continue
+			}
+			notes = append(notes, "secret "+name+" was missing — generated a random value at "+dir+"/"+name+" (0600; read it with e.g. sudo cat "+dir+"/"+name+")")
+		}
+	}
+	return notes
+}
+
+// randomSecret is 32 bytes of crypto/rand, base64url (no padding churn
+// in files or dashboards).
+func randomSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // wireFirstRun composes the T-406 bridge: the handoff reconciles from the

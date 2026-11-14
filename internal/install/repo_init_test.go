@@ -520,8 +520,15 @@ func TestInitIntegrationRealGitRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cat-file: %v", err)
 	}
-	if !strings.Contains(string(out), opts.ImageRef()) {
-		t.Errorf("committed spec must render the pinned image %q:\n%s", opts.ImageRef(), out)
+	// The seed renders the version-DERIVED bootstrap ref when the
+	// installer carries a real version (applyDefaults pins the bootstrap
+	// tag to the running topctl's version — owner, 2026-11-14).
+	wantRef := opts.ImageRef()
+	if opts.ControllerTag == "" && opts.InitVersion != "" && opts.InitVersion != initVersionDefault {
+		wantRef = DefaultControllerImage + ":" + opts.InitVersion
+	}
+	if !strings.Contains(string(out), wantRef) {
+		t.Errorf("committed spec must render the pinned image %q:\n%s", wantRef, out)
 	}
 
 	// The created list claims exactly one seeded commit.
@@ -534,7 +541,11 @@ func TestInitIntegrationRealGitRemote(t *testing.T) {
 	// The rendered template parses under the strict ServiceSpec loader
 	// (platform-repo mode unlocks the reserved core/observability namespaces).
 	tmp := t.TempDir()
-	if _, err := renderTemplate(tmp, opts.ImageRef()); err != nil {
+	wantRef2 := opts.ImageRef()
+	if opts.ControllerTag == "" && opts.InitVersion != "" && opts.InitVersion != initVersionDefault {
+		wantRef2 = DefaultControllerImage + ":" + opts.InitVersion
+	}
+	if _, err := renderTemplate(tmp, wantRef2); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	sr, lerr := spec.LoadDir(tmp, spec.WithPlatformRepo(true))

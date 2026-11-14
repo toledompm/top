@@ -129,11 +129,17 @@ func newInstallCmd(c *cctx) *cobra.Command {
 			}
 			runner := c.orRunner()
 			opts := install.Options{
-				Runner:          runner,
-				Backend:         dokku.New(runner),
-				DataDir:         c.cfg.DataDir,
-				RepoURL:         args[0],
-				Branch:          c.cfg.Git.Branch,
+				Runner:  runner,
+				Backend: dokku.New(runner),
+				DataDir: c.cfg.DataDir,
+				RepoURL: args[0],
+				Branch:  c.cfg.Git.Branch,
+				// Live progress: one stderr line per phase (text mode)
+				// — the operator sees what's running instead of a silent
+				// minute (T-600 flair, 2026-11-14).
+				Progress: func(stage string) {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "topctl install: "+stage)
+				},
 				InstallDokku:    flagBool(cmd, "install-dokku"),
 				Confirm:         true, // requireConfirm above IS the gate
 				DryRun:          flagBool(cmd, "dry-run"),

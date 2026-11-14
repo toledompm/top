@@ -117,6 +117,11 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 	}
 
 	res := &Result{Notes: []string{}}
+	note := func(s string) {
+		if opts.Progress != nil {
+			opts.Progress(s)
+		}
+	}
 
 	// Dry-run: the full plan, zero mutations — no store, no ledger, no
 	// argv beyond read-only probes, no filesystem changes. Phase 0 runs
@@ -151,6 +156,7 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 	// the same phase-op wrapper (its audit record exists like every
 	// other phase's). Findings abort before anything mutates.
 	if err := runPhase(ctx, st, opts, phasePreflight, res, func(opID string, res *Result, extra phaseExtras) error {
+		note("▸ " + phaseNames[phasePreflight] + " — running")
 		rep, perr := runPreflight(ctx, opts, st)
 		res.Preflight = rep
 		return perr
@@ -167,12 +173,14 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 	skip := func(p int) {
 		if done[p] {
 			res.PhasesSkipped = append(res.PhasesSkipped, phaseNames[p])
+			note("▸ " + phaseNames[p] + " — skipped (already complete)")
 		}
 	}
 
 	if done[phaseInventory] {
 		skip(phaseInventory)
 	} else if err := runPhase(ctx, st, opts, phaseInventory, res, func(opID string, res *Result, extra phaseExtras) error {
+		note("▸ " + phaseNames[phaseInventory] + " — running")
 		return runInventory(ctx, opts, st, opID, res, extra)
 	}); err != nil {
 		failure = err
@@ -182,6 +190,7 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 		skip(phaseDokkuSetup)
 	} else if failure == nil {
 		if err := runPhase(ctx, st, opts, phaseDokkuSetup, res, func(opID string, res *Result, extra phaseExtras) error {
+			note("▸ " + phaseNames[phaseDokkuSetup] + " — running")
 			return runDokkuSetup(ctx, opts, res)
 		}); err != nil {
 			failure = err
@@ -192,6 +201,7 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 		skip(phaseWiring)
 	} else if failure == nil {
 		if err := runPhase(ctx, st, opts, phaseWiring, res, func(opID string, res *Result, extra phaseExtras) error {
+			note("▸ " + phaseNames[phaseWiring] + " — running")
 			return runWiring(ctx, opts, st, opID, res, extra)
 		}); err != nil {
 			failure = err
@@ -202,6 +212,7 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 		skip(phaseBootstrapDeploy)
 	} else if failure == nil {
 		if err := runPhase(ctx, st, opts, phaseBootstrapDeploy, res, func(opID string, res *Result, extra phaseExtras) error {
+			note("▸ " + phaseNames[phaseBootstrapDeploy] + " — running")
 			return runBootstrapDeploy(ctx, opts, st, opID, res, extra)
 		}); err != nil {
 			failure = err
@@ -216,6 +227,7 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 	if failure == nil && done[phaseFirstReconcile] {
 		skip(phaseFirstReconcile)
 	} else if failure == nil {
+		note("▸ " + phaseNames[phaseFirstReconcile] + " — running")
 		if err := runPhase(ctx, st, opts, phaseFirstReconcile, res, func(opID string, res *Result, extra phaseExtras) error {
 			return runFirstReconcile(ctx, opts, st, opID, res, extra)
 		}); err != nil {
@@ -225,7 +237,13 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 
 	// Phase 6 — report always runs (even after a failure: the Result
 	// carries the partial lists; this op marks the invocation itself).
+	// The body also writes the runtime config when absent (the operator
+	// should not hand-maintain what install already knows: git URL,
+	// namespaces, poll cadence — T-600 feedback, live homelab 2026-11-14).
 	repErr := runPhase(ctx, st, opts, phaseReport, res, func(opID string, res *Result, extra phaseExtras) error {
+		if err := writeRuntimeConfigIfAbsent(opts, res); err != nil {
+			return err
+		}
 		return nil // the report content IS the Result
 	})
 	if err := firstErr(failure, repErr); err != nil {
