@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 )
@@ -93,9 +94,9 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 	// only over ssh (the https fallback cannot see private repos
 	// anonymously — it silently mis-reported an existing repo as
 	// missing, live run 2026-11-14).
-	home, _ := os.UserHomeDir()
-	key := filepath.Join(home, ".ssh", "top_deploy_key")
-	kh := filepath.Join(home, ".ssh", "top_known_hosts")
+	hoperator := operatorHome()
+	key := filepath.Join(hoperator, ".ssh", "top_deploy_key")
+	kh := filepath.Join(hoperator, ".ssh", "top_known_hosts")
 	haveKey := fileExists(key) && fileExists(kh)
 	sshProbe := func(repo string) bool {
 		cmd := exec.Command("git", "ls-remote", "git@github.com:"+ownerRepo+".git", "HEAD")
@@ -221,6 +222,21 @@ func askChoice(question string, choices []string, def string) string {
 func keyRegisteredGH(ownerRepo, pub string) bool {
 	out, err := exec.Command("gh", "api", "/repos/"+ownerRepo+"/keys").CombinedOutput()
 	return err == nil && strings.Contains(string(out), strings.TrimSpace(pub))
+}
+
+// operatorHome resolves the INVOKING user's home: under `sudo topctl`
+// os.UserHomeDir is /root while the operator's key material (and the
+// deploy identity install uses via --deploy-key) lives in their own
+// home — SUDO_USER names them (live run 2026-11-14: the key landed in
+// /root/.ssh and the operator could never see it).
+func operatorHome() string {
+	if u := os.Getenv("SUDO_USER"); u != "" {
+		if usr, err := user.Lookup(u); err == nil {
+			return usr.HomeDir
+		}
+	}
+	home, _ := os.UserHomeDir()
+	return home
 }
 
 func fileExists(path string) bool {
