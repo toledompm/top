@@ -49,6 +49,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/toledompm/top/internal/backend"
