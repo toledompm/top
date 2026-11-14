@@ -966,3 +966,50 @@ func TestInstallDokkuSudoMissing(t *testing.T) {
 		t.Fatalf("err = %v, want ErrSudoRefused (caught + printed)", err)
 	}
 }
+
+// TestRuntimeConfigWrittenBeforeControllerDeploy pins the phase-4
+// ordering: the runtime config file exists BEFORE the bootstrap deploy's
+// git:from-image argv runs (the daemon boots with its config; a config
+// written in phase 6 is invisible to it until a restart — live homelab
+// 2026-11-14, the daemon polled an empty git url all night because the
+// ordering fix was lost to a conflicting edit and shipped in phase 6
+// only).
+func TestRuntimeConfigWrittenBeforeControllerDeploy(t *testing.T) {
+	t.Parallel()
+	f := exectest.NewFakeRunner()
+	r := wrappedRunner(f)
+	st := testStore(t)
+	opts := testOptions(t, r, st, f)
+	opts.HealthTimeout = 2 * time.Second
+	seedDoctor(f, false)
+	seedRepo(f)
+	seedSnapshot(f)
+	seedPhases(f)
+
+	res, err := Install(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	cfgPath := filepath.Join(opts.DataDir, "top-config.yaml")
+	if _, err := os.Stat(cfgPath); err != nil {
+		t.Fatalf("runtime config missing after install: %v", err)
+	}
+	// Ordering evidence: the config file's content carries the repo URL
+	// (phase 4's write) AND the deploy argv already ran in the same
+	// recorded call log — i.e. the write preceded the deploy verb. The
+	// file must name the repo BEFORE the git:from-image call: check the
+	// recorded call index of git:from-image is after file creation by
+	// asserting the file existed during the phase-4 run: the deploy's
+	// health report path uses opts.DataDir only, so the strong proof is
+	// the content matching opts.RepoURL (phase 4's input), plus the
+	// Created list ordering (config entry BEFORE the bootstrap-deploy).
+	body, rerr := os.ReadFile(cfgPath)
+	if rerr != nil || !strings.Contains(string(body), opts.RepoURL) {
+		t.Fatalf("runtime config lacks the install's repo URL: %v", rerr)
+	}
+	cfgIdx := slices.IndexFunc(res.Created, func(s string) bool { return strings.Contains(s, "top-config.yaml") })
+	deployIdx := slices.IndexFunc(res.Created, func(s string) bool { return strings.HasPrefix(s, "bootstrap-deploy ") })
+	if cfgIdx == -1 || deployIdx == -1 || cfgIdx > deployIdx {
+		t.Fatalf("runtime config must be created before the bootstrap deploy; created=%v", res.Created)
+	}
+}

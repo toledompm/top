@@ -213,6 +213,14 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 	} else if failure == nil {
 		if err := runPhase(ctx, st, opts, phaseBootstrapDeploy, res, func(opID string, res *Result, extra phaseExtras) error {
 			note("▸ " + phaseNames[phaseBootstrapDeploy] + " — running")
+			// The runtime config must exist BEFORE the deploy boots the
+			// daemon — a config written after is invisible to it until a
+			// restart (live homelab 2026-11-14: the daemon polled an
+			// empty git url all night; the ordering fix was lost to a
+			// conflicting edit and shipped in phase 6 only).
+			if err := writeRuntimeConfigIfAbsent(opts, res); err != nil {
+				return err
+			}
 			return runBootstrapDeploy(ctx, opts, st, opID, res, extra)
 		}); err != nil {
 			failure = err
