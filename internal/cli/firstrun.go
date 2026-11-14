@@ -116,6 +116,15 @@ func (h installFirstRun) FirstRun(ctx context.Context) (install.FirstRunReport, 
 		// VolumeRoot or apply refuses un-owned host dirs (ADR-0009) —
 		// the live homelab first-reconcile hit exactly that refusal.
 		VolumeRoot: h.cfg.DataDir + "/volumes",
+		// T-403: the materialized revision's host path feeds the
+		// provisioning-supply sync (provision.go) — the repo's
+		// config/provisioning trees (prometheus.yml, grafana
+		// datasources/dashboards) must land in the VolumeRoot entry dirs
+		// BEFORE the storage mounts, or prometheus boots with no config
+		// file and fails its healthcheck (live homelab, 2026-11-14).
+		// Valid through defer snap.Close() above (the sync copies, never
+		// references).
+		ProvisionSrc: snap.Dir,
 	})
 	rep := install.FirstRunReport{
 		Revision:       sha,
