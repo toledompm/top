@@ -215,9 +215,14 @@ func runWiring(ctx context.Context, opts Options, st store.Store, opID string, r
 
 	// Deploy key + known_hosts: operator-supplied paths (a) copied in at
 	// 0600. Never read the KEY content into argv/logs — file copy only.
+	// The key lands under gitsource's ADR-0008 name (id_ed25519 — the
+	// reader gitsource.New hardcodes); provisioning "deploy_key" made
+	// phase 5's first reconcile ls-remote with a nonexistent identity
+	// (live homelab install, 2026-11-14: two M2-era components each
+	// invented their own name).
 	gitDir := filepath.Join(opts.DataDir, "git")
 	for _, p := range []struct{ src, dst string }{
-		{opts.DeployKey, filepath.Join(gitDir, "deploy_key")},
+		{opts.DeployKey, filepath.Join(gitDir, "id_ed25519")},
 		{opts.KnownHosts, filepath.Join(gitDir, "known_hosts")},
 	} {
 		if err := copyFile0600(p.src, p.dst); err != nil {

@@ -466,7 +466,7 @@ func TestInstallFullPhaseSequence(t *testing.T) {
 		}
 	}
 	// Secret-material file copies: 0600.
-	for _, name := range []string{"deploy_key", "known_hosts"} {
+	for _, name := range []string{"id_ed25519", "known_hosts"} {
 		if perm, _ := readFileMode(t, filepath.Join(dataDir, "git", name)); perm != 0o600 {
 			t.Errorf("%s mode = %o, want 600", name, perm)
 		}

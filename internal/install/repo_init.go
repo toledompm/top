@@ -22,7 +22,7 @@ package install
 //     could in principle read the child env — the same ambient trust level
 //     as the operator's own shell. This is write-once plumbing; the
 //     steady-state transport remains the read-only deploy key.
-//   ssh remotes: the operator's deploy-key material (dataDir/git/deploy_key,
+//   ssh remotes: the operator's deploy-key material (dataDir/git/id_ed25519,
 //     known_hosts copied by phase 3) referenced BY PATH inside
 //     GIT_SSH_COMMAND — the same transport gitsource uses; TOP never reads
 //     the key file. If that key is read-only the push fails loudly on the
@@ -317,7 +317,7 @@ func initPushEnv(opts Options, workDir string) (kind string, env []string, clean
 		// operator's key material copied into <dataDir>/git/ during phase
 		// 3 is referenced BY PATH; TOP never reads the key file.
 		env = []string{"GIT_TERMINAL_PROMPT=0", "GIT_SSH_COMMAND=" + gitsource.SSHCommand(
-			filepath.Join(workDir, "deploy_key"), filepath.Join(workDir, "known_hosts"))}
+			filepath.Join(workDir, "id_ed25519"), filepath.Join(workDir, "known_hosts"))}
 		return "ssh-deploy-key", env, cleanup, nil
 	}
 	if tok := strings.TrimSpace(opts.InitToken); tok != "" {

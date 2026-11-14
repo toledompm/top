@@ -208,8 +208,8 @@ func TestInitSeedGoldenVerbSequence(t *testing.T) {
 	for _, e := range entries {
 		left = append(left, e.Name())
 	}
-	if !slices.Equal(left, []string{"deploy_key", "known_hosts"}) {
-		t.Errorf("leftovers in <dataDir>/git: %v (only deploy_key/known_hosts expected)", left)
+	if !slices.Equal(left, []string{"id_ed25519", "known_hosts"}) {
+		t.Errorf("leftovers in <dataDir>/git: %v (only id_ed25519/known_hosts expected)", left)
 	}
 }
 
@@ -402,7 +402,7 @@ func TestInitSSHTransportCarriesKeyPathOnly(t *testing.T) {
 	}
 	_ = res
 	wantSSH := "GIT_SSH_COMMAND=" + gitsource.SSHCommand(
-		filepath.Join(opts.DataDir, "git", "deploy_key"),
+		filepath.Join(opts.DataDir, "git", "id_ed25519"),
 		filepath.Join(opts.DataDir, "git", "known_hosts"))
 	pushEnv := envOfCall(er, "push")
 	if !slices.Contains(pushEnv, wantSSH) {
