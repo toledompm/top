@@ -112,60 +112,60 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 		return repoExists(ctx, r, ownerRepo)
 	}
 
-	needRepo := !probe()
-	if needRepo && noRepoCreate {
-		declined = true
-		return "", "", declined, "repo creation declined via --no-repo-create", nil
-	}
-	if needRepo {
-		visibility := askChoice("Repo "+ownerRepo+" does not exist. Create it — visibility?", []string{"private", "public"}, "private")
-		created := false
-		if ghAvailable() {
-			fmt.Printf("▸ creating %s (%s) via gh…\n", ownerRepo, visibility)
-			created = createRepoViaGH(ownerRepo) == nil
+	// Ensure the deploy key MATERIAL first (generation needs no GitHub);
+	// registration comes with the repo step (the browser does both).
+	if !fileExists(key) || !fileExists(kh) {
+		fmt.Printf("▸ generating deploy key %s + pinned %s\n", key, kh)
+		if err := generateDeployKeyMaterial(key, kh); err != nil {
+			return "", "", false, "", fmt.Errorf("deploy key generation: %w", err)
 		}
-		if !created {
-			fmt.Printf("────────────────────────────────────────────────────────────\n")
-			fmt.Printf("Create the %s repo by hand (empty, no README):\n  %s\n", visibility, deepLinkNewRepo(strings.SplitN(ownerRepo, "/", 2)[1], visibility))
-			waitForEnter("Press ENTER once the repo exists")
-		}
-		if !probe() {
-			declined = true
-			return "", "", declined, "the platform repo still does not exist after the creation step", nil
-		}
-	}
-
-	// Deploy key: only when the caller gave no --deploy-key AND the
-	// default material is absent (an operator with existing material
-	// passes --deploy-key as before; nothing here overrides them).
-	if fileExists(key) && fileExists(kh) {
-		return key, kh, false, "", nil
-	}
-	fmt.Printf("▸ generating deploy key %s + pinned %s\n", key, kh)
-	if err := generateDeployKeyMaterial(key, kh); err != nil {
-		return "", "", false, "", fmt.Errorf("deploy key generation: %w", err)
 	}
 	pub, err := os.ReadFile(key + ".pub")
 	if err != nil {
 		return "", "", false, "", fmt.Errorf("read %s.pub: %w", key, err)
 	}
-	registered := false
-	if ghAvailable() {
-		err := exec.Command("gh", "api", "-X", "POST", "/repos/"+ownerRepo+"/keys",
+	if !probe() {
+		if noRepoCreate {
+			declined = true
+			return "", "", declined, "the platform repo does not exist (creation declined via --no-repo-create)", nil
+		}
+		if ghAvailable() {
+			visibility := askChoice("Repo "+ownerRepo+" does not exist. Create it — visibility?", []string{"private", "public"}, "private")
+			fmt.Printf("▸ creating %s (%s) via gh…\n", ownerRepo, visibility)
+			if createRepoViaGH(ownerRepo) != nil {
+				declined = true
+				return "", "", declined, "gh repo create failed; check gh auth and re-run", nil
+			}
+		} else {
+			// One combined checkpoint: the browser does both steps —
+			// creating the repo and registering the key (the ssh probe
+			// cannot distinguish "repo missing" from "key unregistered",
+			// so separating them would ask the operator twice for the
+			// same information).
+			fmt.Printf("────────────────────────────────────────────────────────────\n")
+			fmt.Printf("Two browser steps (GitHub):\n")
+			fmt.Printf("  A. create the repo if missing:\n     %s\n", deepLinkNewRepo(strings.SplitN(ownerRepo, "/", 2)[1], "private"))
+			fmt.Printf("  B. register the deploy key (ALLOW WRITE ACCESS for now):\n     key:  %s\n     page: https://github.com/%s/settings/keys/new\n", strings.TrimSpace(string(pub)), ownerRepo)
+			waitForEnter("Press ENTER once both are done")
+		}
+		if !probe() {
+			declined = true
+			return "", "", declined, "GitHub still does not accept the deploy key for the repo (exists? read-write? right repo?)", nil
+		}
+	}
+	// Registered by the gh path above when gh was available; the
+	// deep-link path had the operator do it.
+	if ghAvailable() && !keyRegisteredGH(ownerRepo, strings.TrimSpace(string(pub))) {
+		if err := exec.Command("gh", "api", "-X", "POST", "/repos/"+ownerRepo+"/keys",
 			"-f", "title=media-server-top", "-f", "key="+strings.TrimSpace(string(pub)),
-			"-F", "read_only=false").Run()
-		registered = err == nil
-		if registered {
+			"-F", "read_only=false").Run(); err == nil {
 			fmt.Printf("▸ registered deploy key (read-write; flip to read-only after the install's --init push)\n")
 		}
 	}
-	if !registered {
-		fmt.Printf("────────────────────────────────────────────────────────────\n")
-		fmt.Printf("Add the deploy key by hand — ALLOW WRITE ACCESS for now\n(flip to read-only after the install's --init push):\n  key:  %s\n  page: https://github.com/%s/settings/keys/new\n", strings.TrimSpace(string(pub)), ownerRepo)
-		waitForEnter("Press ENTER once the key is added")
-	}
+	fmt.Println("✓ GitHub reachable with the deploy key")
+
 	if err := verifyDeployKey(key, kh); err != nil {
-		return "", "", true, "the deploy key is registered but GitHub rejected it (read-write? right repo?)", err
+		return "", "", true, "GitHub rejected the registered deploy key (read-write? right repo?)", err
 	}
 	fmt.Println("✓ GitHub reachable with the deploy key")
 	return key, kh, false, "", nil
@@ -214,6 +214,13 @@ func askChoice(question string, choices []string, def string) string {
 	}
 	fmt.Printf("  (unknown answer %q — using %q)\n", line, def)
 	return def
+}
+
+// keyRegisteredGH reports whether a deploy key with this exact public
+// body is already on the repo (gh path; deep-link path skips the call).
+func keyRegisteredGH(ownerRepo, pub string) bool {
+	out, err := exec.Command("gh", "api", "/repos/"+ownerRepo+"/keys").CombinedOutput()
+	return err == nil && strings.Contains(string(out), strings.TrimSpace(pub))
 }
 
 func fileExists(path string) bool {
