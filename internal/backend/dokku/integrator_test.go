@@ -29,6 +29,34 @@ func TestDeployImageGoldenArgv(t *testing.T) {
 	assertArgv(t, f, "dokku git:from-image core-top-controller "+theImage())
 }
 
+// TestDeployImageNoChangesIsSuccess pins the live homelab finding
+// (2026-11-13, media-server): dokku's git:from-image on an app whose
+// source context already carries the image prints "No changes detected"
+// and EXITS 1 — the deploy is already current, so TOP treats it as
+// success instead of failing the bootstrap resume path. Every other
+// exit-1 (and every other stderr) still fails.
+func TestDeployImageNoChangesIsSuccess(t *testing.T) {
+	t.Parallel()
+	f := exectest.NewFakeRunner()
+	f.SetOutput("dokku", exectest.Response{
+		ExitCode: 1,
+		Stderr:   []byte("!     No changes detected, skipping git commit\n !     Call 'ps:rebuild' on app to rebuild the app from existing source"),
+	}, "git:from-image", "core-top-controller", theImage())
+	if err := newC(f).DeployImage(context.Background(), ctlRef, theImage()); err != nil {
+		t.Fatalf("no-changes deploy must classify as success: %v", err)
+	}
+
+	// a real failure with a DIFFERENT stderr still surfaces
+	f2 := exectest.NewFakeRunner()
+	f2.SetOutput("dokku", exectest.Response{
+		ExitCode: 1,
+		Stderr:   []byte("!     some other dokku failure"),
+	}, "git:from-image", "core-top-controller", theImage())
+	if err := newC(f2).DeployImage(context.Background(), ctlRef, theImage()); err == nil {
+		t.Fatal("non-no-changes exit-1 must still fail")
+	}
+}
+
 // TestDeployImageValidation: empty image refs and bad refs are refused
 // without spawning argv.
 func TestDeployImageValidation(t *testing.T) {

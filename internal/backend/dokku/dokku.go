@@ -19,6 +19,7 @@ package dokku
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -436,7 +437,23 @@ func (c *Client) DeployImage(ctx context.Context, ref domain.ServiceRef, imageRe
 		return wrapBackend("deploy image", app, fmt.Errorf("%w: empty image ref", domain.ErrInvalid))
 	}
 	_, err = c.run(ctx, "deploy image", app, deployTimeout, "git:from-image", app, imageRef)
-	return err
+	if err != nil {
+		// dokku's idempotence posture (verified live 2026-11-13,
+		// media-server): git:from-image with an image whose source context
+		// the app ALREADY has prints "! No changes detected, skipping git
+		// commit" + "Call 'ps:rebuild' …" and exits 1 — the deployed state
+		// already matches the requested ref. That is success for TOP's
+		// contract (the deploy is current; ps:rebuild would build the SAME
+		// bytes again). Classify: exit 1 + the no-changes stderr ⇒ nil.
+		// Every other exit-1 failure surfaces untouched.
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && exec.IsExitCode(err, 1) &&
+			strings.Contains(string(ee.Stderr), "No changes detected") {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // EnsureStorageEntry implements backend.PlatformBackend: "storage:info
