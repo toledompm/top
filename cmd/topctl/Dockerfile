@@ -16,6 +16,6 @@ FROM docker.io/library/alpine:3.20
 COPY topctl /usr/local/bin/topctl
 COPY cmd/topctl/dokku-shim /usr/local/bin/dokku
 RUN chmod 0755 /usr/local/bin/topctl /usr/local/bin/dokku \
- && apk add --no-cache git docker-cli
+ && apk add --no-cache git openssh-client docker-cli
 ENTRYPOINT ["/usr/local/bin/topctl", "controller", "run"]
 EXPOSE 8080
