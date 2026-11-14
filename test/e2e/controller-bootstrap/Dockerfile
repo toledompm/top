@@ -1,6 +1,6 @@
 FROM docker.io/library/alpine:3.20
 # The disposable bootstrap controller image (tier-4 fleet helper — the
-# committed pin ghcr.io/example/top/topctl:bootstrap-pinned has no real
+# committed pin ghcr.io/toledompm/top/topctl:v0.1.0 has no real
 # registry; this build supplies it for dokku-in-docker environments).
 #
 # ENTRYPOINT is the daemon (`topctl controller run`, internal/cli).

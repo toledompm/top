@@ -61,7 +61,7 @@ func TestSelfDeployApprovedHumanApplies(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	out := selfOutcome(t, res, domain.OutcomeSucceeded, "")
-	if len(out.Changes) == 0 || !strings.Contains(strings.Join(out.Changes, "; "), "~revision: ghcr.io/toledompm/top/topctl:v0.1.0 → ghcr.io/example/top/topctl:v2") {
+	if len(out.Changes) == 0 || !strings.Contains(strings.Join(out.Changes, "; "), "~revision: ghcr.io/toledompm/top/topctl:v0.1.0 → ghcr.io/toledompm/top/topctl:v2") {
 		t.Errorf("changes = %v, want the revision entry the gate applies", out.Changes)
 	}
 	if !strings.Contains(strings.Join(out.Changes, "; "), "+ports.http") {

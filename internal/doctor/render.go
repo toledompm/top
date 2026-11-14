@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 )
 
 // Render helpers — mirror internal/cli's envelope style in SPIRIT only
@@ -35,11 +36,21 @@ func (r Report) EnvelopeData() map[string]any {
 }
 
 // Summary is the single human sentence for the envelope Message field.
+// On failures it NAMES the failing check IDs — the homelab install
+// (2026-11-13) hit a "1 failure" with no name, forcing an
+// under-informed debug loop; the ID list makes the next action obvious
+// without a re-run.
 func (r Report) Summary() string {
 	switch {
 	case !r.OK():
-		return fmt.Sprintf("doctor found %d failure(s), %d warning(s) — fix the failures before installing",
-			r.Count(SeverityFail), r.Count(SeverityWarn))
+		var ids []string
+		for _, f := range r.Findings {
+			if f.Sev() == SeverityFail {
+				ids = append(ids, f.ID)
+			}
+		}
+		return fmt.Sprintf("doctor found %d failure(s) [%s], %d warning(s) — fix the failures before installing",
+			len(ids), strings.Join(ids, ", "), r.Count(SeverityWarn))
 	case r.Count(SeverityWarn) > 0:
 		return "doctor found no failures, " + strconv.Itoa(r.Count(SeverityWarn)) + " warning(s)"
 	default:

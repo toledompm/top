@@ -408,8 +408,8 @@ metadata:
   namespace: core
 spec:
   source:
-    image: ghcr.io/example/top/topctl
-    tag: bootstrap-pinned
+    image: ghcr.io/toledompm/top/topctl
+    tag: v0.1.0
   ports:
     - { name: http, containerPort: 8443 }
   routing:

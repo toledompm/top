@@ -84,9 +84,10 @@ var DataDirDefault = doctor.DefaultDataDir
 // (ADR-0005 "bootstrap pins a specific version"). The pair is the REAL
 // public artifact the CI release job publishes
 // (ghcr.io/toledompm/top/topctl:<version>, cmd/topctl/Dockerfile): the
-// bootstrap deploy and the next install must agree. "bootstrap-pinned" is
-// the rolling alias the release job also pushes. Bumping either is a
-// conscious release decision.
+// bootstrap deploy and the next install must agree, and the tag is
+// version-precise — no mutable rolling aliases (owner purge of the
+// bootstrap-pinned pattern, 2026-11-13; bumping the pair is a conscious
+// release decision recorded with the tag).
 var (
 	DefaultControllerImage = "ghcr.io/toledompm/top/topctl"
 	DefaultControllerTag   = "v0.1.0"

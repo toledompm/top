@@ -262,6 +262,28 @@ Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
   highest-friction step — manual key/page juggling ahead of `topctl
   install --init`. Deps: gh CLI on the operator's machine. Tests: tier 1
   (sh -n + fixture runs). Agent: cli-go.
+  **Amendment 2026-11-13 (owner): also PURGE the `bootstrap-pinned`
+  rolling-image-tag pattern** — `DefaultControllerTag` moves to a plain
+  version tag (`v0.1.0`), the goreleaser image template loses the
+  `bootstrap-pinned` alias, and `cmd/topctl/dokku-shim` docs + any prose
+  referencing the alias go with it. Reason: a mutable rolling alias is
+  exactly the drift surface TOP's own specs pin against (digest/version
+  discipline); the bootstrap image should be version-precise like
+  everything else.
+
+- **T-605 Real version pins for the observability fleet (pre-M6).**
+  The platform-repo specs still carry FICTIONAL digest placeholders
+  (`sha256:0000…` prometheus, `1111…` grafana, `2222…` node-exporter,
+  `3333…` cadvisor — the T-401-era discipline). Replace every one with a
+  REAL upstream version tag (e.g. `tag: v3.4.1`-style, verified against
+  the upstream release pages at edit time — tags not mutable `latest`,
+  digests by real value where practical), drop the fictional-digest
+  comments, and update `platformrepo_validate_test.go`'s pinned shape +
+  the fictional-values note in the specs (ADR-0014 applies to DOCS and
+  examples of FICTIONAL things; these are real-world images and their
+  pins must be real too). Motivation: the homelab install is about to
+  deploy this fleet for real. Deps: none. Tests:
+  platformrepo_validate_test. Agent: docs+core-go.
 
 - **T-604 Owner docs pass.** Remote ops runbook (homelab flow from the
   operator's machine) + contracts rows (`--host`). Deps: T-602. Agent:

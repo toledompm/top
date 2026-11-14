@@ -46,7 +46,7 @@ func loadTemplateFleet(t *testing.T) spec.Result {
 func renderTemplateIntoTemp(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	n, err := renderTemplate(dir, "ghcr.io/example/top/topctl:bootstrap-pinned")
+	n, err := renderTemplate(dir, "ghcr.io/toledompm/top/topctl:v0.1.0")
 	if err != nil {
 		t.Fatalf("renderTemplate: %v", err)
 	}

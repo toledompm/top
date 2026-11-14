@@ -25,7 +25,7 @@ func selfSpec(image string, extraEnv map[string]string) domain.Service {
 	}
 	return domain.Service{
 		Ref:     SelfRef,
-		Source:  domain.Source{Image: "ghcr.io/example/top/topctl", Tag: "bootstrap-pinned"},
+		Source:  domain.Source{Image: "ghcr.io/toledompm/top/topctl", Tag: "v0.1.0"},
 		Env:     env,
 		Ports:   []domain.Port{{Name: "http", ContainerPort: 8443}},
 		Routing: domain.Routing{Mode: domain.RoutingInternal},

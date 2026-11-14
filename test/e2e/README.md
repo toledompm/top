@@ -97,7 +97,7 @@ The scripts don't care where the VM comes from; the committed helper
   ONE sqlite / secret dir. On the dockerd side only the symlink needs
   making once (the VM container's bind resolves through it).
 - `test/e2e/controller-bootstrap/` builds the pinned
-  `ghcr.io/example/top/topctl:bootstrap-pinned` locally (no registry
+  `ghcr.io/toledompm/top/topctl:v0.1.0` locally (no registry
   exists): `topctl controller run` entrypoint, docker-cli, `git`, and a
   `dokku` PATH shim (`docker exec -i top-e2e-vm dokku`) — a controller
   container in a dokku-in-docker topology has no dokku CLI of its own;

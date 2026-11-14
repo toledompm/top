@@ -9,7 +9,7 @@
 #
 # {{CONTROLLER_IMAGE}} below is the template's ONLY existential placeholder:
 # TOP fills it at seed time with the pinned bootstrap image reference
-# (internal/install's default is ghcr.io/example/top/topctl:bootstrap-pinned).
+# (internal/install.s pinned default fills it at seed time).
 # Digest-pinning is the contract's recommendation; the installer's pinned
 # default is the v0 bootstrap contract. Every other value is fictional
 # (ADR-0014 discipline): replace domains with your own before relying on

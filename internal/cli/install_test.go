@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	stdexec "os/exec"
@@ -87,7 +88,7 @@ func seedFake(t *testing.T, f *exectest.FakeRunner) exectest.Response {
 	f.SetPrefix([]string{"dokku", "git:from-image"}, exectest.Response{Stdout: []byte("1")})
 	f.SetPrefix([]string{"dokku", "ps:report"}, exectest.Response{Stdout: []byte(`{"app":"core-top-controller","deployed":"true","running":"true"}`)})
 	f.SetPrefix([]string{"dokku", "builds:report"}, exectest.Response{Stdout: []byte(`{"build-status":"succeeded"}`)})
-	f.SetPrefix([]string{"dokku", "git:report"}, exectest.Response{Stdout: []byte(`{"source-image":"ghcr.io/example/top/topctl:bootstrap-pinned"}`)})
+	f.SetPrefix([]string{"dokku", "git:report"}, exectest.Response{Stdout: []byte(`{"source-image":"ghcr.io/toledompm/top/topctl:v0.1.0"}`)})
 	f.SetPrefix([]string{"dokku", "apps:report"}, exectest.Response{Stdout: []byte(`{"deploy-source":"docker-image","deploy-source-metadata":"ghc"}`)})
 	f.SetPrefix([]string{"dokku", "network:report"}, exectest.Response{Stdout: []byte(`{"computed-attach-post-create":"top-internal"}`)})
 	f.SetPrefix([]string{"dokku", "resource:report"}, exectest.Response{Stdout: []byte(`{}`)})
@@ -161,6 +162,16 @@ func (s splitGitRunner) RunStream(ctx context.Context, stdout, stderr io.Writer,
 	return s.f.RunStream(ctx, stdout, stderr, name, args...)
 }
 
+// RunEnv satisfies install's envRunner seam (the phase-0 repo probe). The
+// test's remote is file:// — the probe env is empty (sshProbeEnv contract)
+// and git/tar run for real without it; dokku goes to the fake.
+func (s splitGitRunner) RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, []byte, error) {
+	if len(env) != 0 {
+		return nil, nil, fmt.Errorf("splitGitRunner: unexpected non-empty probe env %v (file:// remotes probe env-less)", env)
+	}
+	return s.Run(ctx, name, args...)
+}
+
 // seedRepoFixture creates a minimal local platform repo (controller spec
 // matching the bootstrap deployment's image → the adoption's noop plan)
 // and commits it; returns the file:// URL and HEAD sha.
@@ -219,8 +230,8 @@ metadata:
   namespace: core
 spec:
   source:
-    image: ghcr.io/example/top/topctl
-    tag: bootstrap-pinned
+    image: ghcr.io/toledompm/top/topctl
+    tag: v0.1.0
   ports:
     - { name: http, containerPort: 8443 }
   routing:

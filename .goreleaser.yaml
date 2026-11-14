@@ -31,7 +31,6 @@
 dockers:
   - image_templates:
       - "ghcr.io/toledompm/top/topctl:{{ .Version }}"
-      - "ghcr.io/toledompm/top/topctl:bootstrap-pinned"
     dockerfile: cmd/topctl/Dockerfile
     extra_files:
       - cmd/topctl/dokku-shim

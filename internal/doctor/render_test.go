@@ -36,7 +36,7 @@ func TestRenderTextGolden(t *testing.T) {
 	if err := r.RenderText(&b); err != nil {
 		t.Fatal(err)
 	}
-	want := "doctor: doctor found 1 failure(s), 1 warning(s) \u2014 fix the failures before installing\n" +
+	want := "doctor: doctor found 1 failure(s) [docker/daemon], 1 warning(s) \u2014 fix the failures before installing\n" +
 		"  ok   [os/distro]            operating system distribution: ubuntu 24.04 is a supported distribution\n" +
 		"  info [dokku/state]          dokku present: dokku is not installed; TOP can install it (approval-gated)\n" +
 		"        hint: re-run `topctl install --install-dokku` to install via the documented bootstrap\n" +
