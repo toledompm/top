@@ -424,7 +424,8 @@ func runBootstrapDeploy(ctx context.Context, opts Options, st store.Store, opID 
 	// The deploy body. DeployImage failure surfaces its own adapter error
 	// text; the type-carrying layer above marks the phase op bootstrap-failed.
 	if err := opts.Backend.DeployImage(ctx, ref, opts.ImageRef()); err != nil {
-		return fmt.Errorf("bootstrap deploy of %s: %w (manual path: `dokku git:from-image %s %s`)", opts.ImageRef(), err, app, opts.ImageRef())
+		return fmt.Errorf("bootstrap deploy of %s: %w (stderr: %s) (manual path: `dokku git:from-image %s %s`)",
+			opts.ImageRef(), err, stderrExcerpt(err, 400), app, opts.ImageRef())
 	}
 	res.Created = append(res.Created, "bootstrap-deploy "+app+" ← "+opts.ImageRef())
 
@@ -466,4 +467,21 @@ func waitHealthy(ctx context.Context, opts Options, ref domain.ServiceRef, app s
 		case <-time.After(opts.PollInterval):
 		}
 	}
+}
+
+// stderrExcerpt returns a bounded, single-line excerpt of the failed
+// exec's stderr (the evidence the op record otherwise loses — the
+// 2026-11-13/14 homelab debug loop ran blind on "exit 1" alone). ~400
+// bytes; redaction already applied by the exec layer.
+func stderrExcerpt(err error, max int) string {
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || len(ee.Stderr) == 0 {
+		return "none captured"
+	}
+	s := strings.ReplaceAll(string(ee.Stderr), "\n", " | ")
+	s = strings.TrimSpace(s)
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	return s
 }
