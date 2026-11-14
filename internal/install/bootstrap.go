@@ -525,9 +525,13 @@ secretsProvider:
 namespaces:
   reserved: [%s]
 `, opts.InitVersion, opts.RepoURL, opts.Branch, strings.Join(opts.Namespaces, ", "))
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		return fmt.Errorf("write runtime config %s: %w", path, err)
 	}
-	res.Created = append(res.Created, "file "+path+" (0600; runtime config)")
+	// 0644 deliberately: the file carries NO secrets (ADR-0008 keeps
+	// those in <dataDir>/secrets, 0600 root) — a non-root `topctl diff`
+	// must be able to read the git URL (live homelab 2026-11-14: 0600
+	// root made every non-sudo CLI verb resolve an EMPTY git url).
+	res.Created = append(res.Created, "file "+path+" (0644; runtime config)")
 	return nil
 }

@@ -124,6 +124,30 @@ func newInstallCmd(c *cctx) *cobra.Command {
 		Short: "Install TOP on this host from a platform repo (confirm-gated)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Interactive pre-install bootstrap (T-600): on a TTY with
+			// missing repo/key preconditions, fill them first — repo
+			// create (gh or deep-link+wait), deploy key generation +
+			// registration. --no-repo-create refuses creation; a still-
+			// missing precondition then exits 1 honestly. Non-interactive
+			// runs skip this entirely (strict preflight, unchanged).
+			if isInteractiveTTY() {
+				probeR := runnerArgs(func(ctx context.Context, name string, args ...string) error {
+					_, _, err := c.orRunner().Run(ctx, name, args...)
+					return err
+				})
+				dk, kh, declined, berr := interactiveBootstrap(cmd.Context(), probeR, args[0], flagBool(cmd, "no-repo-create"))
+				if berr != nil {
+					return c.emitErrCode(cmd, "failed", ExitFailed, berr.Error())
+				}
+				if declined {
+					return c.emitErrCode(cmd, "failed", ExitFailed,
+						fmt.Sprintf("repo %s does not exist and creation was declined (--no-repo-create); create it (or drop the override) and re-run", args[0]))
+				}
+				if dk != "" && flagString(cmd, "deploy-key") == "" {
+					_ = cmd.Flags().Set("deploy-key", dk)
+					_ = cmd.Flags().Set("known-hosts", kh)
+				}
+			}
 			if err := c.requireConfirm(cmd, "installing TOP on this host"); err != nil {
 				return err
 			}
@@ -174,6 +198,7 @@ func newInstallCmd(c *cctx) *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("install-dokku", false, "also install Dokku if absent (approval-gated change list: apt packages, nginx on 80/443, dokku user, sshcommand)")
+	cmd.Flags().Bool("no-repo-create", false, "interactive bootstrap: do NOT offer to create a missing platform repo (missing repo then exits 1)")
 	cmd.Flags().Bool("skip-ports", false, "skip the read-only 80/443 availability probe in preflight")
 	cmd.Flags().Bool("init", false, "if the platform repo resolves EMPTY: seed the embedded platform-repo template and push ONE initial commit (one-time credential via the TOP_INIT_TOKEN environment — never a flag value, never stored; the remote itself is never created)")
 	cmd.Flags().String("deploy-key", "", "path to the operator-supplied private deploy key (provisioned 0600 into <dataDir>/git; required in v0)")
