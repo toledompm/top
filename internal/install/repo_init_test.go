@@ -525,7 +525,7 @@ func TestInitIntegrationRealGitRemote(t *testing.T) {
 	// tag to the running topctl's version — owner, 2026-11-14).
 	wantRef := opts.ImageRef()
 	if opts.ControllerTag == "" && opts.InitVersion != "" && opts.InitVersion != initVersionDefault {
-		wantRef = DefaultControllerImage + ":" + opts.InitVersion
+		wantRef = DefaultControllerImage + ":" + BootstrapTagFor(opts.InitVersion)
 	}
 	if !strings.Contains(string(out), wantRef) {
 		t.Errorf("committed spec must render the pinned image %q:\n%s", wantRef, out)
@@ -543,7 +543,7 @@ func TestInitIntegrationRealGitRemote(t *testing.T) {
 	tmp := t.TempDir()
 	wantRef2 := opts.ImageRef()
 	if opts.ControllerTag == "" && opts.InitVersion != "" && opts.InitVersion != initVersionDefault {
-		wantRef2 = DefaultControllerImage + ":" + opts.InitVersion
+		wantRef2 = DefaultControllerImage + ":" + BootstrapTagFor(opts.InitVersion)
 	}
 	if _, err := renderTemplate(tmp, wantRef2); err != nil {
 		t.Fatalf("render: %v", err)

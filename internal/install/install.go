@@ -95,6 +95,16 @@ var (
 	DefaultControllerTag   = "v0.1.0"
 )
 
+// BootstrapTagFor renders the bootstrap controller image tag for a
+// running installer version: the version, v-prefixed (image tags carry
+// the v; goreleaser's injected version string does not).
+func BootstrapTagFor(version string) string {
+	if strings.HasPrefix(version, "v") {
+		return version
+	}
+	return "v" + version
+}
+
 // Typed failure classes. The CLI maps them onto docs/contracts/cli.md exit
 // codes; the values are message text, the identity is classification.
 var (
@@ -279,11 +289,7 @@ func (o *Options) applyDefaults() {
 	// (0.1.2 vs v0.1.2 — the first real run hit "manifest unknown" on
 	// the un-prefixed tag) — normalize here.
 	if o.ControllerTag == "" && o.InitVersion != initVersionDefault {
-		tag := o.InitVersion
-		if !strings.HasPrefix(tag, "v") {
-			tag = "v" + tag
-		}
-		o.ControllerTag = tag
+		o.ControllerTag = BootstrapTagFor(o.InitVersion)
 	}
 	if o.InitAuthorName == "" {
 		o.InitAuthorName = initAuthorNameDefault
