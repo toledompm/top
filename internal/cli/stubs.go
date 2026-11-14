@@ -148,6 +148,19 @@ func newInstallCmd(c *cctx) *cobra.Command {
 					_ = cmd.Flags().Set("known-hosts", kh)
 				}
 			}
+			// Persisted-bootstrap default (ALL runs, TTY or not): once the
+			// operator's deploy key material exists, it IS the default —
+			// the bootstrap's second pass must not need the operator to
+			// repeat flags (live run 2026-11-14: a plain re-run failed
+			// preflight on install-input with the material sitting right
+			// there). Explicit flags still win.
+			if flagString(cmd, "deploy-key") == "" {
+				hoperator := operatorHome()
+				if fileExists(hoperator+"/.ssh/top_deploy_key") && fileExists(hoperator+"/.ssh/top_known_hosts") {
+					_ = cmd.Flags().Set("deploy-key", hoperator+"/.ssh/top_deploy_key")
+					_ = cmd.Flags().Set("known-hosts", hoperator+"/.ssh/top_known_hosts")
+				}
+			}
 			if err := c.requireConfirm(cmd, "installing TOP on this host"); err != nil {
 				return err
 			}
