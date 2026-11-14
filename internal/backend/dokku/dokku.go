@@ -82,7 +82,11 @@ func (c *Client) run(ctx context.Context, op, app string, timeout time.Duration,
 		}
 	}
 	if err != nil {
-		return "", wrapBackend(op, app, err)
+		// stdout/stderr still return on failure — callers classify on the
+		// child's OUTPUT (DeployImage's no-changes marker rides whichever
+		// stream dokku chose), so dropping it here made the bootstrap
+		// resume path blind (homelab media-server, 2026-11-14).
+		return strings.TrimSpace(string(stdout)), wrapBackend(op, app, err)
 	}
 	return strings.TrimSpace(string(stdout)), nil
 }
@@ -436,19 +440,22 @@ func (c *Client) DeployImage(ctx context.Context, ref domain.ServiceRef, imageRe
 	if strings.TrimSpace(imageRef) == "" {
 		return wrapBackend("deploy image", app, fmt.Errorf("%w: empty image ref", domain.ErrInvalid))
 	}
-	_, err = c.run(ctx, "deploy image", app, deployTimeout, "git:from-image", app, imageRef)
+	stdout, err := c.run(ctx, "deploy image", app, deployTimeout, "git:from-image", app, imageRef)
 	if err != nil {
-		// dokku's idempotence posture (verified live 2026-11-13,
+		// dokku's idempotence posture (verified live 2026-11-13/14,
 		// media-server): git:from-image with an image whose source context
 		// the app ALREADY has prints "! No changes detected, skipping git
 		// commit" + "Call 'ps:rebuild' …" and exits 1 — the deployed state
 		// already matches the requested ref. That is success for TOP's
 		// contract (the deploy is current; ps:rebuild would build the SAME
-		// bytes again). Classify: exit 1 + the no-changes stderr ⇒ nil.
-		// Every other exit-1 failure surfaces untouched.
+		// bytes again). Classify: exit 1 + the no-changes marker ⇒ nil.
+		// The marker rides STDERR in tty contexts and STDOUT under
+		// sudo/non-TTY (dokku's own stream choice) — check BOTH; the
+		// stdout-only case is why the stderr-only match kept missing.
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && exec.IsExitCode(err, 1) &&
-			strings.Contains(string(ee.Stderr), "No changes detected") {
+			(strings.Contains(string(ee.Stderr), "No changes detected") ||
+				strings.Contains(stdout, "No changes detected")) {
 			return nil
 		}
 		return err
