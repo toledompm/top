@@ -146,6 +146,14 @@ type Options struct {
 	// SkipPorts opts out of the 80/443 probe (operator choice; the
 	// bind-close window is a brief TOCTOU race — see README).
 	SkipPorts bool
+	// LedgeredApps maps TOP-ledger app identifiers → their state
+	// ("bootstrap-owned"/"managed"), when the caller could open the
+	// ledger (the CLI wires it when <dataDir>/top.db is readable).
+	// The names check downgrades the controller collision to INFO when
+	// the app is TOP's own — a standalone doctor after a successful
+	// install must not fail on TOP's own controller (live run
+	// 2026-11-14). nil → no ledger knowledge (strict behavior).
+	LedgeredApps map[string]string
 	// OSReleasePath is where checkDistro reads identity. Tests point it
 	// at a fake file; "" → /etc/os-release (linux only).
 	OSReleasePath string

@@ -18,6 +18,7 @@ import (
 	"github.com/toledompm/top/internal/domain"
 	"github.com/toledompm/top/internal/exec"
 	"github.com/toledompm/top/internal/install"
+	"github.com/toledompm/top/internal/inventory"
 	"github.com/toledompm/top/internal/reconcile"
 	"github.com/toledompm/top/internal/secrets"
 	"github.com/toledompm/top/internal/spec"
@@ -76,10 +77,26 @@ func newDoctorCmd(c *cctx) *cobra.Command {
 		Short: "Check host preconditions (pre-install environment check)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Ledger awareness: when TOP's state store is readable from
+			// THIS invocation, the names check knows which apps are
+			// TOP's own — a post-install standalone doctor must not fail
+			// on the operator's own controller (live run 2026-11-14).
+			// Unreadable (non-sudo, no state yet) → nil → strict.
+			var ledgered map[string]string
+			if st, err := sqlite.Open(cmd.Context(), c.cfg.DataDir+"/top.db"); err == nil {
+				if entries, lerr := st.ListLedger(cmd.Context(), inventory.KindApp); lerr == nil {
+					ledgered = map[string]string{}
+					for _, e := range entries {
+						ledgered[e.Identifier] = string(e.State)
+					}
+				}
+				_ = st.Close()
+			}
 			rep := doctor.Run(cmd.Context(), doctor.Options{
 				DataDir:            c.cfg.DataDir,
 				ReservedNamespaces: c.cfg.Namespaces.Reserved,
 				SkipPorts:          flagBool(cmd, "skip-ports"),
+				LedgeredApps:       ledgered,
 			})
 			// text: the full human report (findings + hints, ADR-0009);
 			// json: the versioned envelope carrying the payload.

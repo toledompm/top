@@ -284,6 +284,12 @@ func topLabels(namespace, service string) map[string]string {
 // MkdirAll so an inherited-umask creation still ends up 0700) and returns
 // what it created. Idempotent: existing dirs are re-tightened (contract:
 // "TOP re-tightens this during install").
+//
+// The DATADIR itself is 0711, not 0700 (owner posture amendment, live
+// homelab 2026-11-14): traverse-only lets (a) a non-sudo `topctl diff`
+// read the 0644 runtime config and (b) dokku's storage plugin stat the
+// volumes subtree — without making any name or file readable (secrets
+// stay 0700/0600 root). The SUBDIRS stay 0700.
 func ensureDataDirs(dataDir string) ([]string, error) {
 	created := []string{}
 	for _, wd := range wiringDirs {
@@ -291,24 +297,30 @@ func ensureDataDirs(dataDir string) ([]string, error) {
 		if wd.sub != "" {
 			path = filepath.Join(dataDir, wd.sub)
 		}
+		mode := os.FileMode(0o700)
+		if wd.sub == "" {
+			mode = 0o711
+		}
 		existed := true
 		if st, err := os.Stat(path); err != nil || !st.IsDir() {
 			existed = false
 		}
-		if err := os.MkdirAll(path, 0o700); err != nil {
+		if err := os.MkdirAll(path, mode); err != nil {
 			return nil, fmt.Errorf("create %s: %w", path, err)
 		}
-		if err := os.Chmod(path, 0o700); err != nil {
-			return nil, fmt.Errorf("chmod 700 %s: %w", path, err)
+		if err := os.Chmod(path, mode); err != nil {
+			return nil, fmt.Errorf("chmod %o %s: %w", mode, path, err)
 		}
 		if !existed {
-			created = append(created, "dir "+path+" (0700)")
+			created = append(created, "dir "+path+" ("+modePerm(mode)+")")
 		} else {
-			created = append(created, "dir re-tightened "+path+" (0700)")
+			created = append(created, "dir re-tightened "+path+" ("+modePerm(mode)+")")
 		}
 	}
 	return created, nil
 }
+
+func modePerm(m os.FileMode) string { return fmt.Sprintf("%04o", m.Perm()) }
 
 // copyFile0600 copies src → dst with mode 0600 (secret material-deploy
 // keys go 0600, never wider; never logged).

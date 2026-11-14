@@ -27,6 +27,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // repoExists reports whether the GitHub repo is reachable: gh first
@@ -149,9 +150,20 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 			fmt.Printf("  B. register the deploy key (ALLOW WRITE ACCESS for now):\n     key:  %s\n     page: https://github.com/%s/settings/keys/new\n", strings.TrimSpace(string(pub)), ownerRepo)
 			waitForEnter("Press ENTER once both are done")
 		}
-		if !probe() {
-			declined = true
-			return "", "", declined, "GitHub still does not accept the deploy key for the repo (exists? read-write? right repo?)", nil
+		// Bounded retry: a freshly-registered key / just-created repo may
+		// take seconds to propagate on GitHub's edge (live operator run
+		// 2026-11-14: the first ENTER-then-probe failed, the immediate
+		// re-run succeeded — same state, pure delay).
+		for attempt := 1; attempt <= 3; attempt++ {
+			if probe() {
+				break
+			}
+			if attempt == 3 {
+				declined = true
+				return "", "", declined, "GitHub still does not accept the deploy key for the repo (exists? read-write? right repo?) — waited ~15s", nil
+			}
+			fmt.Printf("  (not reachable yet — retrying in 5s, attempt %d/3)\n", attempt)
+			time.Sleep(5 * time.Second)
 		}
 	}
 	// Registered by the gh path above when gh was available; the
@@ -162,11 +174,6 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 			"-F", "read_only=false").Run(); err == nil {
 			fmt.Printf("▸ registered deploy key (read-write; flip to read-only after the install's --init push)\n")
 		}
-	}
-	fmt.Println("✓ GitHub reachable with the deploy key")
-
-	if err := verifyDeployKey(key, kh); err != nil {
-		return "", "", true, "GitHub rejected the registered deploy key (read-write? right repo?)", err
 	}
 	fmt.Println("✓ GitHub reachable with the deploy key")
 	return key, kh, false, "", nil
@@ -259,18 +266,4 @@ func generateDeployKeyMaterial(key, knownHosts string) error {
 		return err
 	}
 	return os.WriteFile(knownHosts, out, 0o600)
-}
-
-// verifyDeployKey runs the exact ssh identity check the operator flow
-// used (BatchMode — never a prompt/hang).
-func verifyDeployKey(key, knownHosts string) error {
-	cmd := exec.Command("ssh", "-i", key, "-o", "IdentitiesOnly=yes",
-		"-o", "UserKnownHostsFile="+knownHosts, "-o", "BatchMode=yes",
-		"-o", "ConnectTimeout=10", "-T", "git@github.com")
-	out, err := cmd.CombinedOutput()
-	if err != nil && !strings.Contains(string(out), "successfully authenticated") &&
-		!strings.Contains(string(out), "does not provide shell access") {
-		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
-	}
-	return nil
 }

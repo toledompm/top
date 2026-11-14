@@ -265,9 +265,20 @@ func (r *Report) checkNames(apps []string, opts Options) {
 		switch app {
 		case ControllerAppName:
 			collided = true
-			r.fail("names/top-controller", "TOP-reserved app names",
-				fmt.Sprintf("a Dokku app named %q already exists on this host", ControllerAppName),
-				"TOP's bootstrap deploy needs that exact name; check whether it is TOP's own leftover (`dokku ps:inspect core-top-controller`) and remove/rename it before installing")
+			if state, known := opts.LedgeredApps[app]; known {
+				// The ledger says this IS TOP's own deployment — a
+				// standalone `topctl doctor` after a successful install
+				// must not call the operator's own controller a hostile
+				// collision (live run 2026-11-14: doctor-after-install
+				// FAILED on TOP's own app). INFO + the re-install note.
+				r.info("names/top-controller", "TOP-reserved app names",
+					fmt.Sprintf("app %q exists and is TOP's own deployment (ledger state: %s)", ControllerAppName, state),
+					"re-running `topctl install` resumes/skips at completed phases; `topctl uninstall` removes it")
+			} else {
+				r.fail("names/top-controller", "TOP-reserved app names",
+					fmt.Sprintf("a Dokku app named %q already exists on this host", ControllerAppName),
+					"TOP's bootstrap deploy needs that exact name; check whether it is TOP's own leftover (`dokku ps:inspect core-top-controller`) and remove/rename it before installing")
+			}
 		default:
 			for _, pre := range prefixed {
 				if strings.HasPrefix(app, pre) {
@@ -436,19 +447,23 @@ func (r *Report) checkSudo(ctx context.Context, runner exec.Runner) {
 
 // checkDataDir differs from other checks in an important way: it performs
 // NO filesystem writes (doctor contract: read-only; the actual
-// datasvik dir creation / 0700 tightening is the installer's job). It
-// only reports the observed state:
+// data-dir check (typo "data-dir" fixed): the installer creates it.
+// The contract mode is 0711 on the datadir itself (traverse-only, owner
+// posture amendment 2026-11-14: the 0644 runtime config must be readable
+// by non-sudo CLI verbs and dokku's storage plugin stats the volumes
+// subtree) with 0700 subdirs; 0700 stays accepted (a pre-amendment
+// install). Anything looser → WARN. It only reports the observed state:
 //   - absent → INFO (installer creates it);
-//   - present but perms looser than 0700 → WARN;
-//   - present, not a dir → WARN;
-//   - present, 0700 → OK.
+//   - not a dir → WARN;
+//   - 0700 or 0711 → OK;
+//   - anything else → WARN.
 func (r *Report) checkDataDir(opts Options) {
 	dir := opts.DataDir
 	st, err := os.Stat(dir)
 	switch {
 	case os.IsNotExist(err):
 		r.info("store/datadir", "data directory "+dir,
-			dir+" does not exist yet; created by `topctl install` (0700)",
+			dir+" does not exist yet; created by `topctl install` (0711)",
 			"no action needed now")
 	case err != nil:
 		r.warn("store/datadir", "data directory "+dir,
@@ -458,13 +473,19 @@ func (r *Report) checkDataDir(opts Options) {
 		r.warn("store/datadir", "data directory "+dir,
 			dir+" exists and is not a directory",
 			"remove or move the offending path so topctl install can create the state directory")
-	case st.Mode().Perm()&^0o700 != 0:
-		r.warn("store/datadir", "data directory "+dir,
-			fmt.Sprintf("%s exists with mode %o (TOP's contract is 0700)", dir, st.Mode().Perm()),
-			"`chmod 700 "+dir+"` (TOP re-tightens this during install)")
-	default:
+	case st.Mode().Perm() == 0o700:
 		r.ok("store/datadir", "data directory "+dir,
 			dir+" exists with 0700 permissions")
+	case st.Mode().Perm() == 0o711:
+		r.ok("store/datadir", "data directory "+dir,
+			dir+" exists with 0711 permissions (traverse-only: the runtime config is non-root-readable; contents stay 0700/0600)")
+	case st.Mode().Perm()&^0o711 != 0 || st.Mode().Perm()&0o700 != 0o700:
+		r.warn("store/datadir", "data directory "+dir,
+			fmt.Sprintf("%s exists with mode %o (TOP's contract is 0711 traverse-only, subdirs 0700)", dir, st.Mode().Perm()),
+			"`chmod 711 "+dir+"` (TOP re-tightens this during install)")
+	default:
+		r.ok("store/datadir", "data directory "+dir,
+			dir+" exists with 0711 permissions")
 	}
 }
 

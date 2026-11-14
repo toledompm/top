@@ -455,14 +455,21 @@ func TestInstallFullPhaseSequence(t *testing.T) {
 	}
 	dataDir := opts.DataDir
 
-	// Directory tree: 0700.
+	// Directory tree: datadir 0711 (traverse-only — the runtime config is
+	// 0644 non-root-readable and dokku's storage plugin stats the volumes
+	// subtree; ADR-0009 posture amendment, live homelab 2026-11-14),
+	// subdirs 0700.
 	for _, sub := range []string{"", "secrets", "git"} {
 		stt, err := os.Stat(filepath.Join(dataDir, sub))
 		if err != nil {
 			t.Fatalf("dir %s missing after install: %v", sub, err)
 		}
-		if stt.Mode().Perm() != 0o700 {
-			t.Errorf("dir %s mode = %o, want 700", sub, stt.Mode().Perm())
+		want := os.FileMode(0o700)
+		if sub == "" {
+			want = 0o711
+		}
+		if stt.Mode().Perm() != want {
+			t.Errorf("dir %q mode = %o, want %o", sub, stt.Mode().Perm(), want)
 		}
 	}
 	// Secret-material file copies: 0600.
