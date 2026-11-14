@@ -241,6 +241,8 @@ func Install(ctx context.Context, opts Options) (*Result, error) {
 	// should not hand-maintain what install already knows: git URL,
 	// namespaces, poll cadence — T-600 feedback, live homelab 2026-11-14).
 	repErr := runPhase(ctx, st, opts, phaseReport, res, func(opID string, res *Result, extra phaseExtras) error {
+		// Resume paths can reach phase 6 with the config still absent
+		// (phase 4 skipped over an old completion) — idempotent if-exists.
 		if err := writeRuntimeConfigIfAbsent(opts, res); err != nil {
 			return err
 		}
