@@ -8,6 +8,25 @@ follow [SemVer](https://semver.org) (tags: `v0.X.Y`).
 
 ## [Unreleased]
 
+## [v0.1.1] — 2026-11-14 (live-homelab fixes)
+### Fixed
+- Install phase 0's repo probe rides the deploy-key transport (bare ssh
+  under sudo reported a readable repo unreachable).
+- `DeployImage` classifies dokku's no-changes `git:from-image` (exit 1,
+  "No changes detected" marker on either stream) as already-current
+  success — the bootstrap resume path re-runs an identical deploy.
+- Install failures carry a bounded stderr excerpt in the error + op
+  record; doctor failure summaries name the failing checks.
+- Bootstrap provisions the deploy key under gitsource's ADR-0008 name
+  (`id_ed25519`), and the CLI run-input paths wire `VolumeRoot`
+  (`<dataDir>/volumes`) + `ProvisionSrc` so storage-bearing specs and
+  config sync work on the first reconcile.
+- Controller image is now a real release artifact
+  (`ghcr.io/toledompm/top/topctl:vX.Y.Z` with the `v` prefix intact),
+  published by CI on every tag; the fictional placeholder default and
+  the `bootstrap-pinned` rolling alias are gone (T-605 for the
+  observability fleet: real upstream version tags).
+
 ## [M5 — T-507] — 2026-11-03 (development)
 ### Added
 - Release engineering: `.goreleaser.yaml` (raw `topctl-<os>-<arch>` binaries
