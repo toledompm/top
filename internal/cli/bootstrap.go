@@ -88,7 +88,35 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 	if !ok {
 		return "", "", false, "", nil // not a GitHub repo — nothing to bootstrap
 	}
-	needRepo := !repoExists(ctx, r, ownerRepo)
+
+	// Deploy key material comes FIRST: the repo probe is authoritative
+	// only over ssh (the https fallback cannot see private repos
+	// anonymously — it silently mis-reported an existing repo as
+	// missing, live run 2026-11-14).
+	home, _ := os.UserHomeDir()
+	key := filepath.Join(home, ".ssh", "top_deploy_key")
+	kh := filepath.Join(home, ".ssh", "top_known_hosts")
+	haveKey := fileExists(key) && fileExists(kh)
+	sshProbe := func(repo string) bool {
+		if !haveKey && key != "" {
+			// no key material yet — the caller's Runner probe is the
+			// best we can do (public repos only)
+		}
+		cmd := exec.Command("git", "ls-remote", "git@github.com:"+ownerRepo+".git", "HEAD")
+		cmd.Env = append(os.Environ(),
+			"GIT_TERMINAL_PROMPT=0",
+			"GIT_SSH_COMMAND=ssh -i "+key+" -o IdentitiesOnly=yes -o UserKnownHostsFile="+kh+" -o BatchMode=yes")
+		_, err := cmd.CombinedOutput()
+		return err == nil
+	}
+	probe := func() bool {
+		if haveKey {
+			return sshProbe(ownerRepo)
+		}
+		return repoExists(ctx, r, ownerRepo)
+	}
+
+	needRepo := !probe()
 	if needRepo && noRepoCreate {
 		declined = true
 		return "", "", declined, "repo creation declined via --no-repo-create", nil
@@ -105,7 +133,7 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 			fmt.Printf("Create the %s repo by hand (empty, no README):\n  %s\n", visibility, deepLinkNewRepo(strings.SplitN(ownerRepo, "/", 2)[1], visibility))
 			waitForEnter("Press ENTER once the repo exists")
 		}
-		if !repoExists(ctx, r, ownerRepo) {
+		if !probe() {
 			declined = true
 			return "", "", declined, "the platform repo still does not exist after the creation step", nil
 		}
@@ -114,9 +142,6 @@ func interactiveBootstrap(ctx context.Context, r runnerArgs, repoURL string, noR
 	// Deploy key: only when the caller gave no --deploy-key AND the
 	// default material is absent (an operator with existing material
 	// passes --deploy-key as before; nothing here overrides them).
-	home, _ := os.UserHomeDir()
-	key := filepath.Join(home, ".ssh", "top_deploy_key")
-	kh := filepath.Join(home, ".ssh", "top_known_hosts")
 	if fileExists(key) && fileExists(kh) {
 		return key, kh, false, "", nil
 	}
