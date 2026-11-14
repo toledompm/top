@@ -29,8 +29,12 @@
 # own bootstrap artifact needs a registry home — and CI builds it, so the
 # hosts never do.
 dockers:
+  # NOTE the v prefix: goreleaser's {{ .Version }} strips the tag's "v"
+  # (the 2026-11-13 homelab install pulled "manifest unknown" for
+  # v0.1.0 because the images landed as 0.1.0); the installer's
+  # DefaultControllerTag carries the v, so the template re-adds it.
   - image_templates:
-      - "ghcr.io/toledompm/top/topctl:{{ .Version }}"
+      - "ghcr.io/toledompm/top/topctl:v{{ .Version }}"
     dockerfile: cmd/topctl/Dockerfile
     extra_files:
       - cmd/topctl/dokku-shim
@@ -39,7 +43,7 @@ dockers:
       - "--label=org.opencontainers.image.version={{ .Version }}"
     goarch: amd64
   - image_templates:
-      - "ghcr.io/toledompm/top/topctl:{{ .Version }}-arm64"
+      - "ghcr.io/toledompm/top/topctl:v{{ .Version }}-arm64"
     dockerfile: cmd/topctl/Dockerfile
     extra_files:
       - cmd/topctl/dokku-shim
