@@ -3,9 +3,9 @@
 TOP is an opinionated, self-hosted, single-node application platform that brings
 GitOps-style continuous reconciliation to Dokku — think "Flux for Dokku".
 
-**Status: Milestone 0 (architecture & planning). No implementation exists yet.
-Do not write production code until the owner explicitly approves the plan in
-`docs/adr/` + `docs/tasks/backlog.md`.**
+**Status: v0.1.1 is released.** TOP is now developed through small,
+feedback-driven changes. Validate each change proportionately before moving to
+the next one.
 
 ## Repository layout
 
@@ -13,9 +13,9 @@ Do not write production code until the owner explicitly approves the plan in
 docs/architecture/   system overview, risk register, test strategy
 docs/adr/            architecture decision records (product decisions, portable)
 docs/contracts/      ServiceSpec, PlatformBackend, StateStore, etc.
-docs/milestones/     milestone plans with acceptance criteria
+docs/milestones/     historical milestone plans and review records
 docs/operations/     install / revival / backups (operator recipe) / teardown runbooks
-docs/tasks/          authoritative implementation backlog (backlog.md)
+docs/tasks/          historical implementation backlog (backlog.md)
 examples/            fictional, committable example configs
 .local/              PRIVATE local notes (gitignored — never commit)
 ```
@@ -31,12 +31,14 @@ examples/            fictional, committable example configs
    author's test host is fine when authorized; installing packages, touching
    docker resources, firewall, or Dokku requires an explicit go-ahead for that
    specific operation.
-3. **Keep the plan in tracked docs.** Durable decisions live in ADRs, not in
-   chat. If a decision changes, amend the ADR (status: superseded) rather than
-   contradicting it silently.
-4. **One authoritative backlog.** `docs/tasks/backlog.md` is the only task
-   list; new work is appended there, never in side files.
-5. **Go conventions (for Milestone 1+).** `go vet` + `gofmt` + `golangci-lint`
+3. **Keep durable decisions in tracked docs.** ADRs, contracts, and runbooks
+   remain the source of truth; do not leave a material product or safety
+   decision only in chat. Supersede an ADR when its decision changes.
+4. **Work is feedback-driven.** Do not maintain an implementation backlog or
+   milestone plan. Scope each change to the reported need, state its expected
+   behavior and verification in the change itself, and keep historical plans
+   as records rather than sources of new work.
+5. **Go conventions.** `go vet` + `gofmt` + `golangci-lint`
    clean; small packages under `internal/`; slog for logging; errors wrapped
    with context; every component ships a README.
 6. **Testing.** Unit tests are portable and hermetic. Anything needing a real

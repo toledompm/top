@@ -1,7 +1,9 @@
-# Milestones
+# Milestones (historical)
 
-Dependency-ordered. Each milestone is independently reviewable, shippable,
-and leaves the repo in a coherent state. Details in per-milestone files.
+These documents record the dependency-ordered plan used to build v0. They are
+not an active delivery process: TOP now uses small, feedback-driven changes
+with proportionate verification. Read them for historical rationale and
+acceptance evidence, not as a queue for new work.
 
 ```
 M0 Architecture & plan ──► M1 Foundation ──► M2 Bootstrap & host lifecycle
@@ -16,7 +18,7 @@ M0 Architecture & plan ──► M1 Foundation ──► M2 Bootstrap & host lif
                                            ▼
                                 M5 Operational hardening  ──► v0
                                            
-                                (post-v0: M6 MCP server — ADR-0011)
+                                (post-v0 ideas, including M6, were deferred)
 ```
 
 | # | Title | Core deliverable | Key acceptance |
@@ -28,12 +30,9 @@ M0 Architecture & plan ──► M1 Foundation ──► M2 Bootstrap & host lif
 | [M4](m4-self-managed-observability.md) | Self-managed core & observability | install script hands off to GitOps; prometheus/grafana as specs | webhook e2e; poll repairs missed webhook; TOP-down survival |
 | [M5](m5-hardening.md) | Operational hardening | failure injection, docs completion, release engineering | all 10 acceptance tests scripted & green |
 
-## Global rules
+## Historical rules
 
-- No milestone starts before the previous milestone's Definition of Done is
-  met (parallel work allowed only where the backlog marks it).
-- Every milestone ends with: docs updated, ADRs amended if reality diverged,
-  backlog updated, hygiene check (ADR-0014) re-run.
+- These rules governed v0 delivery only. New work follows `AGENTS.md` instead.
 - Host-mutating tests follow the tier rules in
   [`../architecture/testing-strategy.md`](../architecture/testing-strategy.md).
 

@@ -1,7 +1,8 @@
-# Milestone 6 — Remote `topctl` operation
+# Milestone 6 — Remote `topctl` operation (historical proposal)
 
-(Status: accepted 2026-11-07 with ADR-0016; Tasks T-601..T-604 below are
-unscheduled post-v0 work — see backlog.)
+> **Status: deferred.** The project no longer uses milestone or backlog
+> planning. This document preserves the accepted ADR-0016 proposal; it does
+> not schedule implementation or authorize work.
 
 ## Objective & scope
 
@@ -68,7 +69,7 @@ port. `install` stays host-local by design.
 - Operator's stderr confusion between TOP-side and remote-side diagnostics:
   prefix discipline (same convention the adapter uses for dokku stderr).
 
-## Tasks (post-approval, backlog additions)
+## Former task breakdown (historical)
 
 - **T-601 ssh transport in `internal/exec`** (Runner variant, flags,
   redaction, refusal taxonomy, tier-1 tests).

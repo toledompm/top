@@ -1,9 +1,13 @@
-# TOP implementation backlog (authoritative)
+# TOP implementation backlog (historical)
 
-One list, ordered. Rules: AGENTS.md §4. Fields: **Deps** (task IDs), **AC**
-(acceptance), **Tests**, **Refs** (ADRs/contracts), **Risk** (host-mutation
-risk), **Approval** (human gate beyond normal review), **Agent** (suggested
-profile). All tasks produce portable artifacts only (ADR-0014).
+This is the planning record used to build TOP through v0.1.1. It is **not an
+active task queue**: do not append work here or use its sequencing to block a
+feedback-driven change. New work is scoped and verified with the change that
+motivates it; durable product and safety decisions remain in ADRs.
+
+The task IDs, dependencies, acceptance criteria, and status notes below are
+preserved as historical evidence of how v0 was built. All artifacts described
+here remain subject to ADR-0014's public/private boundary.
 
 Legend — Agent profiles: `core-go` (Go domain/infra), `cli-go` (CLI/UX),
 `docs`, `test` (harness/e2e), `review` (critic pass).
