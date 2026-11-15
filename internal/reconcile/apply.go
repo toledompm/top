@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/toledompm/top/internal/backend"
@@ -423,11 +424,27 @@ func (r *Reconciler) awaitReadiness(ctx context.Context, svc domain.Service, dep
 // observed revision must already match what the plan wanted (image
 // services: the pinned reference; git services: the pinned sha). A
 // mutable reference is not comparable — the diff already warns about it.
+//
+// Archive-deployed apps are the exception: the checks-carrying
+// git:from-archive path leaves NO Image fact (dokku records the
+// archive's commit sha; git:report source-image is empty BY
+// CONSTRUCTION — verified live 2026-11-15, media-server: the cadvisor
+// conversion deployed fine and then failed readiness for 3m on
+// image="" because nothing can ever match). Their convergence is the
+// adapter's archive-fingerprint contract instead: backend.Apply returns
+// nil only after the minted fingerprint matched this spec's archive or
+// this spec's archive was re-sent successfully — and the key is minted
+// ONLY post-success (ADR-0002 amendment A1). Its presence therefore
+// certifies the serving release; the Image comparison keeps applying to
+// plain git:from-image deploys.
 func revisionOK(svc domain.Service, last domain.ObservedState) error {
 	switch {
 	case svc.Source.Image != "":
 		want := wantRevisionImage(svc)
 		if want == "" {
+			return nil
+		}
+		if slices.Contains(last.EnvKeys, backend.ArchiveFingerprintKey) {
 			return nil
 		}
 		if last.Image != want {

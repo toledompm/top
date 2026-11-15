@@ -198,3 +198,14 @@ type ApplyOptions struct {
 	ForcePull   bool
 	SkipStorage bool
 }
+
+// ArchiveFingerprintKey is the adapter-owned env key carrying the sha256
+// of the last successfully converged synthesized app.json archive
+// (ADR-0002 amendment A1). It is written ONLY after the deploy itself
+// succeeded, so its PRESENCE certifies "the serving release runs an
+// archive deploy whose checks are the minting spec's" — the readiness
+// vocabulary for apps dokku deployed from a tar (deploy source tar,
+// git:report source-image empty BY CONSTRUCTION). The value is only ever
+// compared against the spec-derived fingerprint, never parsed as user
+// config.
+const ArchiveFingerprintKey = "TOP_ARCHIVE_SHA256"

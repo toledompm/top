@@ -141,8 +141,10 @@ func (c *Client) Apply(ctx context.Context, ref domain.ServiceRef, spec domain.S
 // of the last successfully converged synthesized app.json archive (see
 // applyEnv). TOP_ prefix is the platform namespace (AGENTS.md naming); it
 // is a config KEY by design — the value is only ever compared against the
-// spec-derived fingerprint, never parsed as user config.
-const archiveFingerprintKey = "TOP_ARCHIVE_SHA256"
+// spec-derived fingerprint, never parsed as user config. The shared
+// definition lives in internal/backend (the reconciler's readiness gate
+// keys its presence).
+const archiveFingerprintKey = backend.ArchiveFingerprintKey
 
 // managedEnvKeys are dokku-managed app env keys: dokku injects but owns
 // them, and they come back after every rebuild regardless of what the
