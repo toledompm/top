@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/toledompm/top/internal/backend"
 	"github.com/toledompm/top/internal/domain"
 	"github.com/toledompm/top/internal/gitsource"
 	"github.com/toledompm/top/internal/reconcile"
@@ -198,10 +199,19 @@ func (fs *fakeStore) InsertLedgerEntry(_ context.Context, r *store.Resource) err
 	return nil
 }
 
-func (fs *fakeStore) ListLedger(context.Context, string) ([]*store.Resource, error) {
-	// The fake ledger is read only for orphan scans; created entries are
-	// kept in fs.ledger via InsertLedgerEntry (unused by these runs).
-	return nil, nil
+func (fs *fakeStore) ListLedger(_ context.Context, kind string) ([]*store.Resource, error) {
+	// Reads back what InsertLedgerEntry recorded (ledgerApp checks the
+	// kind's entries for an existing row before marking created — the
+	// reconcile loop ledgerApps every spec service on every run).
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	var out []*store.Resource
+	for _, r := range fs.ledger {
+		if r.Kind == kind {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 
 func (fs *fakeStore) runsOf() []*domain.ReconciliationRun {
@@ -350,6 +360,19 @@ func (fb *fakeBackend) SetRestartPolicy(context.Context, domain.ServiceRef, doma
 	return nil
 }
 func (fb *fakeBackend) AttachNetwork(context.Context, domain.ServiceRef, string) error { return nil }
+
+// Apply is the seam's convergence primitive. This fake's runs converge
+// on plain image services: the deploy behavior — including the
+// failDeploy error and the blockCh drain semantics the shutdown tests
+// hold the reconcile busy with — rides here now that the reconciler
+// calls Apply instead of DeployImage. Field families beyond the deploy
+// are no-ops; nothing these daemon specs assert on crosses them.
+func (fb *fakeBackend) Apply(ctx context.Context, ref domain.ServiceRef, spec domain.Service, _ map[string]string, _ backend.ApplyOptions) error {
+	if spec.Source.Image == "" {
+		return nil // build sources: not exercised by the daemon tests
+	}
+	return fb.DeployImage(ctx, ref, spec.Source.Reference())
+}
 
 // --- daemon fabric ------------------------------------------------------------------
 

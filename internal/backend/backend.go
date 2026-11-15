@@ -187,6 +187,14 @@ type Readiness struct {
 // (contract: "--force when the desired ref is a mutable tag and poll
 // detected movement; digests never need it"). Digest-pinned and build
 // sources never force.
+//
+// SkipStorage leaves storage entries and mounts untouched: it selects the
+// ADR-0009 split where the CALLER owns the storage host-dir lifecycle
+// (TOP-owned <VolumeRoot>/<app>-<entry> dirs, 0700 core / 0777 workload
+// dirs, pre-created before storage:create) while Apply converges every
+// other family. The installer-tier Apply path (no caller-owned dirs)
+// leaves it false and gets Apply's default host-dir shape.
 type ApplyOptions struct {
-	ForcePull bool
+	ForcePull   bool
+	SkipStorage bool
 }

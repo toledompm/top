@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/toledompm/top/internal/backend"
 	"github.com/toledompm/top/internal/domain"
 	"github.com/toledompm/top/internal/inventory"
 )
@@ -178,9 +179,13 @@ func blockedByFailed(ref domain.ServiceRef, byRef map[domain.ServiceRef]domain.S
 	return false
 }
 
-// applyService converges ONE service: create/update per the plan's field
-// changes, then the readiness gate. Every failure is the outcome's typed
-// error text; nothing here aborts the run.
+// applyService converges ONE service: the storage lifecycle (the one
+// family whose host-dir ownership stays reconciler-side, ADR-0009), then
+// backend.Apply — the contract's single converge primitive — for every
+// other field family (env, restart policy, network, ports, domains,
+// resources, deploy; its zero-mutation guards are the reboot invariant),
+// then the readiness gate. Every failure is the outcome's typed error
+// text; nothing here aborts the run.
 func (r *Reconciler) applyService(ctx context.Context, in RunInput, svc domain.Service, sp domain.ServicePlan) domain.ServiceOutcome {
 	out := domain.ServiceOutcome{Ref: svc.Ref}
 	changes := renderChanges(sp.Changes)
@@ -203,210 +208,116 @@ func (r *Reconciler) applyService(ctx context.Context, in RunInput, svc domain.S
 		return fail(fmt.Errorf("ensure app %s: %w", app, err))
 	}
 
-	// 2. Apply the plan's field changes (apply anchors itself on what the
-	// plan observed; the same objects apply executed). Ownership is
-	// already on record — the run loop ledgerApps every spec service
-	// before this point, converged apps included (the ledger is the
-	// prune gate's "owned" key).
-	needed, err := r.applyChanges(ctx, in, svc, sp)
-	if err != nil {
+	// 2. Storage, change-driven: entries + mounts under TOP-owned host
+	// dirs (<VolumeRoot>/<app>-<entry>, 0700 core / 0777 workloads —
+	// ADR-0009; dokku 0.38 storage:create refuses a MISSING host dir,
+	// tier-4 verified 2026-11-03). Removals detach; the entry itself
+	// stays — data lifecycle is never an implicit decision (ADR-0009).
+	// Apply runs with SkipStorage: its default host-dir shape is the
+	// installer-tier path, not this one.
+	if err := r.applyStorageChanges(ctx, in, svc, sp); err != nil {
 		return fail(err)
 	}
 
-	// 3. New deployment when the revision changed (DeployImage is
-	// deliberately NOT no-op-safe — only call it when the diff says so).
-	if needed.deploy {
-		switch {
-		case svc.Source.Image != "":
-			if err := r.backend.DeployImage(ctx, svc.Ref, svc.Source.Reference()); err != nil {
-				return fail(fmt.Errorf("deploy %s: %w", svc.Source.Reference(), err))
+	// 3. Secrets: resolve every secretRef up front (ADR-0008: resolution
+	// is the apply step's job; values go straight into Apply and are
+	// never logged or recorded).
+	secrets := map[string]string{}
+	if len(svc.SecretRefs) > 0 {
+		if r.secrets == nil {
+			return fail(fmt.Errorf("%w: secret refs %v: no secret provider configured (ADR-0008)",
+				domain.ErrInvalid, svc.SecretRefs))
+		}
+		for _, name := range svc.SecretRefs {
+			value, _, serr := r.secrets.Resolve(ctx, name)
+			if serr != nil {
+				return fail(fmt.Errorf("resolve secret %s: %w", name, serr))
 			}
-		default:
-			// Source builds reach this seam only through git:sync, which
-			// the gitsource wave owns (T-303). A revision change the
-			// reconciler cannot apply is a contained failure — the old
-			// release keeps serving behind the readiness gate.
-			return fail(errors.New(
-				"apply: source-build revision changes require the git:sync seam (T-303); reported, last known-good keeps serving"))
+			secrets[name] = value
 		}
 	}
-	// 4. Readiness gate (deployed + running under the bounded deadline;
+
+	// 4. Converge + deploy in one contract call. The deploy decision is
+	// Apply's (obs-based guards; a converged app under the same revision
+	// mutates nothing, a rebooted-but-matching release re-serves without
+	// a gratuitous git:from-image).
+	if err := r.backend.Apply(ctx, svc.Ref, svc, secrets, backend.ApplyOptions{SkipStorage: true}); err != nil {
+		return fail(fmt.Errorf("apply %s: %w", svc.Ref, err))
+	}
+
+	// 5. Readiness gate (deployed + running under the bounded deadline;
 	// build sources additionally refuse a last-failed build).
-	if err := r.awaitReadiness(ctx, svc, needed.deploy); err != nil {
+	if err := r.awaitReadiness(ctx, svc, hasRevisionChange(sp)); err != nil {
 		return fail(err)
 	}
 	out.Result = domain.OutcomeSucceeded
 	return out
 }
 
-// applyNeeded carries which apply effects the run must execute for one
-// service: a new deployment, and the family flags that fire the
-// full-replace convergence calls.
-type applyNeeded struct {
-	deploy                                bool
-	env, ports, domains, restart, storage bool
-}
-
-// applyChanges executes the plan's field-level entries for ONE service.
-// Full-replace families (ports, domains) collapse their +/~/- entries into
-// a single set call with the desired state — that is what `ports:set` /
-// `domains:set` do, and it makes removal idempotent.
-func (r *Reconciler) applyChanges(ctx context.Context, in RunInput, svc domain.Service, sp domain.ServicePlan) (applyNeeded, error) {
-	var need applyNeeded
-
+// hasRevisionChange reports whether the plan carried a revision entry —
+// the readiness gate's "a deploy was executed" pacing signal.
+func hasRevisionChange(sp domain.ServicePlan) bool {
 	for _, c := range sp.Changes {
-		switch {
-		case c.Path == "revision":
-			need.deploy = true
-
-		case strings.HasPrefix(c.Path, "env."):
-			need.env = true
-
-		case c.SecretRef && strings.HasPrefix(c.Path, "secretRefs."):
-			name := strings.TrimPrefix(c.Path, "secretRefs.")
-			// Never execute a secret change without a resolver: values
-			// must come from the resolution seam, never be guessed.
-			if r.secrets == nil {
-				return need, fmt.Errorf("%w: secret ref %s: no secret provider configured (ADR-0008)",
-					domain.ErrInvalid, name)
-			}
-			value, _, err := r.secrets.Resolve(ctx, name)
-			if err != nil {
-				return need, fmt.Errorf("resolve secret %s: %w", name, err)
-			}
-			// The value goes straight into the backend call; it is never
-			// logged or recorded (the outcome's error text above and the
-			// plan carry only the NAME).
-			//
-			// The env KEY is SecretEnvKey(name) — the T-403 dash-kebab rule
-			// (README "T-403 wiring" item 6) — so `gf-security-admin-
-			// password` lands as GF_SECURITY_ADMIN_PASSWORD. The plan's
-			// vocabulary and this failure text keep the NAME.
-			envKey, kerr := domain.SecretEnvKey(name)
-			if kerr != nil {
-				return need, kerr
-			}
-			if err := r.backend.SetSecretEnv(ctx, svc.Ref, envKey, value); err != nil {
-				return need, fmt.Errorf("set secret %s: %w", name, err)
-			}
-		case strings.HasPrefix(c.Path, "ports."):
-			need.ports = true
-
-		case strings.HasPrefix(c.Path, "domains."):
-			need.domains = true
-
-		case strings.HasPrefix(c.Path, "networks."):
-			switch {
-			case c.To != nil:
-				if err := r.attachNetwork(ctx, svc, *c.To); err != nil {
-					return need, err
-				}
-			default:
-				// Network removals (operator-attached extras) are NOT ours
-				// to slide: like Dokku env, the attach list is a sink for
-				// things TOP did not set this run.
-			}
-
-		case strings.HasPrefix(c.Path, "storage."):
-			// Storage adds/renames ensure+attach; removals detach (the
-			// entry itself stays — data lifecycle is never an implicit
-			// decision, ADR-0009).
-			name, mount, ok := splitStoragePath(c.Path)
-			if !ok {
-				return need, fmt.Errorf("%w: storage change %q: unnamable entry", domain.ErrInvalid, c.Path)
-			}
-			hostDir := storageHostDir(in.VolumeRoot, svc.Ref, name)
-			if hostDir == "" {
-				return need, errors.New(
-					"apply: storage change but no VolumeRoot configured; refusing to mount un-owned host dirs (ADR-0009)")
-			}
-			// The reconciler owns <VolumeRoot>/<app>-<entry> (ADR-0009's
-			// TOP-owned host dir): dokku 0.38's storage:create refuses a
-			// MISSING host dir outright ("unable to stat …", tier-4
-			// verified 2026-11-03), so the dir is this apply's own
-			// precondition. MkdirAll is idempotent; the installer's wiring
-			// only provisioned {secrets,git} — /volumes is
-			// lifecycle-owned here.
-			//
-			// Mode: core stays 0700 (TOP's own metadata, root-only).
-			// User workloads run as their image users (prometheus's
-			// nobody-uid TSDB panic, tier-4 verified 2026-11-03 —
-			// dokku's --chown false is TOP's contract, so writable-mode
-			// is the only workload-uid lever in v0) → 0777 dir.
-			mode := os.FileMode(0o700)
-			if svc.Ref.Namespace != domain.CoreNamespace {
-				mode = 0o777
-			}
-			if err := os.MkdirAll(hostDir, mode); err != nil {
-				return need, fmt.Errorf("ensure storage host dir %s: %w", hostDir, err)
-			}
-			if err := os.Chmod(hostDir, mode); err != nil {
-				return need, fmt.Errorf("set storage host dir mode %s: %w", hostDir, err)
-			}
-			app, _ := domain.AppName(svc.Ref.Namespace, svc.Ref.Name)
-			if err := r.backend.EnsureStorageEntry(ctx, app+"-"+name, hostDir); err != nil {
-				return need, fmt.Errorf("ensure storage entry %s: %w", app+"-"+name, err)
-			}
-			if c.To != nil {
-				if err := r.backend.AttachStorage(ctx, svc.Ref, app+"-"+name, mount); err != nil {
-					return need, fmt.Errorf("attach storage %s:%s: %w", name, mount, err)
-				}
-			} else if c.From != nil {
-				if err := r.backend.DetachStorage(ctx, svc.Ref, app+"-"+name, mount); err != nil {
-					return need, fmt.Errorf("detach storage %s:%s: %w", name, mount, err)
-				}
-			}
-			need.storage = true
-
-		case c.Path == "restart-policy":
-			if err := r.backend.SetRestartPolicy(ctx, svc.Ref, svc.RestartPolicy); err != nil {
-				return need, fmt.Errorf("set restart policy: %w", err)
-			}
-			need.restart = true
-
-		default:
-			// Unapplied-by-this-seam change families are deliberate
-			// report-only gaps (plan README's coverage matrix), not
-			// failures to force-reapply every run.
+		if c.Path == "revision" {
+			return true
 		}
 	}
-
-	// Full-replace families fire once per service (even when several field
-	// entries belong to the same set call).
-	if need.env {
-		if err := r.backend.SetConfigEnv(ctx, svc.Ref, svc.Env); err != nil {
-			return need, fmt.Errorf("set config env: %w", err)
-		}
-	}
-	if need.ports {
-		// Exposure follows the routing mode — the SAME rule the plan's
-		// changePorts runs (and backend Apply's applyPorts enforces):
-		// proxy declares mappings; none/internal converge to cleared.
-		// (Interim seam parity until convergence delegates to Apply.)
-		ports := svc.Ports
-		if svc.Routing.Mode != domain.RoutingProxy {
-			ports = nil
-		}
-		if err := r.backend.SetPorts(ctx, svc.Ref, ports); err != nil {
-			return need, fmt.Errorf("set ports: %w", err)
-		}
-	}
-	if need.domains {
-		if err := r.backend.SetDomains(ctx, svc.Ref, svc.Routing.Domains); err != nil {
-			return need, fmt.Errorf("set domains: %w", err)
-		}
-	}
-	return need, nil
+	return false
 }
 
-// attachNetwork attaches the shared internal network when the routing mode
-// is internal (the network itself is ensured before the first such attach).
-func (r *Reconciler) attachNetwork(ctx context.Context, svc domain.Service, network string) error {
-	if err := r.backend.EnsureNetwork(ctx, network); err != nil {
-		return fmt.Errorf("ensure network %s: %w", network, err)
-	}
-	if err := r.backend.AttachNetwork(ctx, svc.Ref, network); err != nil {
-		return fmt.Errorf("attach network %s: %w", network, err)
+// applyStorageChanges executes the plan's storage.* entries for ONE
+// service. Adds/renames ensure+attach (after pre-creating the TOP-owned
+// host dir); removals detach (the entry itself stays — ADR-0009).
+func (r *Reconciler) applyStorageChanges(ctx context.Context, in RunInput, svc domain.Service, sp domain.ServicePlan) error {
+	for _, c := range sp.Changes {
+		if !strings.HasPrefix(c.Path, "storage.") {
+			continue
+		}
+		name, mount, ok := splitStoragePath(c.Path)
+		if !ok {
+			return fmt.Errorf("%w: storage change %q: unnamable entry", domain.ErrInvalid, c.Path)
+		}
+		hostDir := storageHostDir(in.VolumeRoot, svc.Ref, name)
+		if hostDir == "" {
+			return errors.New(
+				"apply: storage change but no VolumeRoot configured; refusing to mount un-owned host dirs (ADR-0009)")
+		}
+		// The reconciler owns <VolumeRoot>/<app>-<entry> (ADR-0009's
+		// TOP-owned host dir): dokku 0.38's storage:create refuses a
+		// MISSING host dir outright ("unable to stat …", tier-4
+		// verified 2026-11-03), so the dir is this apply's own
+		// precondition. MkdirAll is idempotent; the installer's wiring
+		// only provisioned {secrets,git} — /volumes is
+		// lifecycle-owned here.
+		//
+		// Mode: core stays 0700 (TOP's own metadata, root-only).
+		// User workloads run as their image users (prometheus's
+		// nobody-uid TSDB panic, tier-4 verified 2026-11-03 —
+		// dokku's --chown false is TOP's contract, so writable-mode
+		// is the only workload-uid lever in v0) → 0777 dir.
+		mode := os.FileMode(0o700)
+		if svc.Ref.Namespace != domain.CoreNamespace {
+			mode = 0o777
+		}
+		if err := os.MkdirAll(hostDir, mode); err != nil {
+			return fmt.Errorf("ensure storage host dir %s: %w", hostDir, err)
+		}
+		if err := os.Chmod(hostDir, mode); err != nil {
+			return fmt.Errorf("set storage host dir mode %s: %w", hostDir, err)
+		}
+		app, _ := domain.AppName(svc.Ref.Namespace, svc.Ref.Name)
+		if err := r.backend.EnsureStorageEntry(ctx, app+"-"+name, hostDir); err != nil {
+			return fmt.Errorf("ensure storage entry %s: %w", app+"-"+name, err)
+		}
+		if c.To != nil {
+			if err := r.backend.AttachStorage(ctx, svc.Ref, app+"-"+name, mount); err != nil {
+				return fmt.Errorf("attach storage %s:%s: %w", name, mount, err)
+			}
+		} else if c.From != nil {
+			if err := r.backend.DetachStorage(ctx, svc.Ref, app+"-"+name, mount); err != nil {
+				return fmt.Errorf("detach storage %s:%s: %w", name, mount, err)
+			}
+		}
 	}
 	return nil
 }

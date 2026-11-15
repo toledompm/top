@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/toledompm/top/internal/backend"
 	"github.com/toledompm/top/internal/domain"
 	"github.com/toledompm/top/internal/store"
 )
@@ -26,16 +27,18 @@ type StateStore = store.Store
 // LastGoodRevision, Stop, Destroy, DeployImage, EnsureNetwork,
 // EnsureStorageEntry, AttachStorage, DetachStorage.
 //
-// Convergence additions required of the same-wave adapter (T-305/T-306
-// apply step) — each maps one Dokku command class, batched to avoid
-// redeploys (README "Convergence method contract"):
-//
-//   - SetConfigEnv   → `config:set --no-restart` (additive, values are plain)
-//   - SetSecretEnv   → same, carrying a RESOLVED value (never logged)
-//   - SetPorts       → `ports:set` (full replace)
-//   - SetDomains     → `domains:set` (full replace)
-//   - SetRestartPolicy → `ps:set restart-policy`
-//   - AttachNetwork  → `network:set` attach (no redeploy)
+// Convergence is ONE contract call, backend.Apply (T-305/T-306): it
+// converges env, restart policy, storage (unless opts.SkipStorage — the
+// reconciler owns the storage host-dir lifecycle, ADR-0009), network
+// attachments, ports, domains, resource limits, and the deploy in the
+// documented order, with the zero-mutation guards that keep a converged
+// or rebooted host from re-running deploy verbs. The per-field setter
+// methods this seam carried until 2026-11-15 (SetConfigEnv, SetSecretEnv,
+// SetPorts, SetDomains, SetRestartPolicy, AttachNetwork) are GONE: they
+// were a parallel converge implementation that drifted from Apply — the
+// divergence shipped host port mappings to internal-mode apps (mode:internal
+// means none; the seam never checked), leaving nginx listeners on
+// contested ports that blocked every reload (media-server 2026-11-14).
 //
 // All methods respect ctx cancellation and return the platform-backend
 // typed error classes.
@@ -51,13 +54,11 @@ type Backend interface {
 	AttachStorage(ctx context.Context, ref domain.ServiceRef, name, containerPath string) error
 	DetachStorage(ctx context.Context, ref domain.ServiceRef, name, containerPath string) error
 
-	// Convergence surface (new; lands in internal/dokku same wave).
-	SetConfigEnv(ctx context.Context, ref domain.ServiceRef, env map[string]string) error
-	SetSecretEnv(ctx context.Context, ref domain.ServiceRef, name, value string) error
-	SetPorts(ctx context.Context, ref domain.ServiceRef, ports []domain.Port) error
-	SetDomains(ctx context.Context, ref domain.ServiceRef, domains []string) error
-	SetRestartPolicy(ctx context.Context, ref domain.ServiceRef, policy domain.RestartPolicy) error
-	AttachNetwork(ctx context.Context, ref domain.ServiceRef, network string) error
+	// Convergence surface: the contract's one converge primitive. opts
+	// carries ForcePull (mutable-tag movement) and SkipStorage (the
+	// ADR-0009 reconciler-owned host-dir split).
+	Apply(ctx context.Context, ref domain.ServiceRef, spec domain.Service,
+		secrets map[string]string, opts backend.ApplyOptions) error
 }
 
 // Clock is the injected time source for pacing and deadlines: readiness

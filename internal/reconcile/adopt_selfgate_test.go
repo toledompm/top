@@ -30,6 +30,7 @@ func approvedSelfRun(t *testing.T, ledger store.ResourceState, actor domain.Acto
 		a.deployed, a.running = true, true
 		a.image = "ghcr.io/toledompm/top/topctl:v0.1.0"
 		a.env["TZ"] = "UTC"
+		a.restartPol = domain.RestartAlways
 	})
 	svc := selfSpec("", nil)
 	svc.Source.Tag = "v2" // the new controller revision in git
@@ -74,8 +75,10 @@ func TestSelfDeployApprovedHumanApplies(t *testing.T) {
 	if len(seq) == 0 {
 		t.Fatalf("approved human self-deploy must apply; zero verbs")
 	}
-	if !strings.HasPrefix(seq[0], "ensure:") {
-		t.Errorf("first verb = %s, want ensure (adopt-if-exists) before the deploy", seq[0])
+	// First verb = the drift bundle's field set (network attach; env and
+	// restart are converged in the seed), then the deploy.
+	if !strings.HasPrefix(seq[0], "network-attach:") {
+		t.Errorf("first verb = %s, want the network attach (the bundle's field set) before the deploy", seq[0])
 	}
 	found := false
 	for _, s := range seq {

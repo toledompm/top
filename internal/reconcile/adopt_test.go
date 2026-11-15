@@ -102,6 +102,7 @@ func TestAdoptSelfNoRedeployWhenSpecMatches(t *testing.T) {
 		a.image = img
 		a.env["TZ"] = "UTC"
 		a.networks = []string{"top-internal"}
+		a.restartPol = domain.RestartAlways
 		// No ports: internal-mode exposure is none (the converged shape;
 		// the spec's declared 8443 is for the healthcheck reference only).
 	})
@@ -207,6 +208,7 @@ func TestAdoptSelfFieldDriftConverges(t *testing.T) {
 		a.image = img
 		a.env["TZ"] = "UTC"
 		a.networks = []string{"top-internal"}
+		a.restartPol = domain.RestartAlways
 	})
 	svc := selfSpec("", map[string]string{"LOG_LEVEL": "info"})
 
@@ -218,17 +220,17 @@ func TestAdoptSelfFieldDriftConverges(t *testing.T) {
 	if !slices.Contains(out.Changes, "+env.LOG_LEVEL: <absent> → info") {
 		t.Errorf("changes = %v, want the env add entry", out.Changes)
 	}
-	// The ledger row that exists is left alone (ledgerApp is idempotent);
-	// the only mutating verbs must be EnsureApp (adopt-if-exists) + the
-	// env set — never a deploy.
+	// The ledger row that exists is left alone (ledgerApp is idempotent
+	// and runs for every spec service in the run loop); the only mutating
+	// verbs are the env key-set delta — never a deploy, never an ensure
+	// (the app exists) and nothing else drifted.
 	seq := fb.sequenceOf()
-	if len(seq) != 2 || !strings.HasPrefix(seq[0], "ensure:") ||
-		seq[1] != "env:core/top-controller:2" {
-		t.Errorf("sequence = %v, want [ensure:… env:core/top-controller:2]", seq)
+	if len(seq) != 1 || !strings.HasPrefix(seq[0], "env:core/top-controller:") {
+		t.Errorf("sequence = %v, want [env:core/top-controller:…]", seq)
 	}
 	for _, s := range seq {
-		if strings.HasPrefix(s, "deploy:") {
-			t.Errorf("adoped self must never reach DeployImage: %v", seq)
+		if strings.HasPrefix(s, "deploy:") || strings.HasPrefix(s, "sync:") {
+			t.Errorf("adopted self must never reach a deploy verb: %v", seq)
 		}
 	}
 }

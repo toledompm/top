@@ -97,9 +97,15 @@ func (c *Client) Apply(ctx context.Context, ref domain.ServiceRef, spec domain.S
 			return wrapBackend("apply restart-policy", app, err)
 		}
 	}
-	// --- storage: entries + mounts converge; removed mounts unmount
-	if err := c.applyStorage(ctx, app, spec.Storage, obs.StorageMounts); err != nil {
-		return err
+	// --- storage: entries + mounts converge; removed mounts unmount.
+	// Skippable via opts.SkipStorage — the ADR-0009 split: a caller that
+	// owns the storage host-dir lifecycle (the reconciler's
+	// <VolumeRoot>/<app>-<entry> dirs) converges mounts itself and asks
+	// Apply not to touch storage with the default host-dir shape.
+	if !opts.SkipStorage {
+		if err := c.applyStorage(ctx, app, spec.Storage, obs.StorageMounts); err != nil {
+			return err
+		}
 	}
 	// --- network: internal mode attaches the shared network (post-deploy
 	// hook so scrapes only start after checks pass, ADR-0002)

@@ -5,6 +5,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/toledompm/top/internal/backend"
 	"github.com/toledompm/top/internal/domain"
 	"github.com/toledompm/top/internal/store"
 )
@@ -85,8 +87,10 @@ func (fb *fakeBackend) EnsureApp(ctx context.Context, ref domain.ServiceRef) err
 	if a.failEnsure != nil {
 		return a.failEnsure
 	}
-	a.deployed = true
-	fb.logf("ensure:%s", ref)
+	if !a.deployed { // adopt-if-exists: an existing app is a read, not a mutation
+		a.deployed = true
+		fb.logf("ensure:%s", ref)
+	}
 	return nil
 }
 
@@ -195,49 +199,161 @@ func (fb *fakeBackend) DetachStorage(ctx context.Context, ref domain.ServiceRef,
 	return nil
 }
 
-func (fb *fakeBackend) SetConfigEnv(ctx context.Context, ref domain.ServiceRef, env map[string]string) error {
+// topInternalNetwork is the shared network name the adapter's Apply
+// attaches for internal-mode routing (dokku DefaultInternalNetwork).
+const topInternalNetwork = "top-internal"
+
+// Apply implements the seam's contract converge over the fake host, with
+// the real adapter's guards mirrored so a second identical run plans to
+// zero and mutates zero: converged fields mutate and log nothing, the
+// deploy skips when the observed image matches and the release is
+// serving (the reboot invariant), and exposure/storage follow the
+// contract's mode rules. Storage is the caller's (SkipStorage): mounts
+// ride the reconciler's EnsureStorageEntry/AttachStorage verbs.
+func (fb *fakeBackend) Apply(ctx context.Context, ref domain.ServiceRef, spec domain.Service, secrets map[string]string, opts backend.ApplyOptions) error {
 	a := fb.app(ref)
-	for k, v := range env {
-		a.env[k] = v
+	if a.failEnsure != nil {
+		return a.failEnsure
 	}
-	fb.logf("env:%s:%d", ref, len(env))
-	return nil
-}
+	if !a.deployed {
+		a.deployed = true
+		fb.logf("ensure:%s", ref)
+	}
 
-func (fb *fakeBackend) SetSecretEnv(ctx context.Context, ref domain.ServiceRef, name, value string) error {
-	fb.app(ref).secret[name] = value
-	fb.logf("secret:%s:%s", ref, name)
-	return nil
-}
-
-func (fb *fakeBackend) SetPorts(ctx context.Context, ref domain.ServiceRef, ports []domain.Port) error {
-	fb.app(ref).ports = append([]domain.Port(nil), ports...)
-	fb.logf("ports:%s:%d", ref, len(ports))
-	return nil
-}
-
-func (fb *fakeBackend) SetDomains(ctx context.Context, ref domain.ServiceRef, domains []string) error {
-	fb.app(ref).domains = append([]string(nil), domains...)
-	fb.logf("domains:%s:%d", ref, len(domains))
-	return nil
-}
-
-func (fb *fakeBackend) SetRestartPolicy(ctx context.Context, ref domain.ServiceRef, policy domain.RestartPolicy) error {
-	fb.app(ref).restartPol = policy
-	fb.logf("restart:%s", ref)
-	return nil
-}
-
-func (fb *fakeBackend) AttachNetwork(ctx context.Context, ref domain.ServiceRef, network string) error {
-	a := fb.app(ref)
-	for _, n := range a.networks {
-		if n == network {
-			return nil
+	// env: key-set delta, plain keys and secretRefs under their mapped
+	// env keys (domain.SecretEnvKey).
+	set := map[string]string{}
+	for k, v := range spec.Env {
+		if _, ok := a.env[k]; !ok {
+			set[k] = v
 		}
 	}
-	a.networks = append(a.networks, network)
-	fb.logf("network-attach:%s:%s", ref, network)
+	for _, name := range spec.SecretRefs {
+		key, err := domain.SecretEnvKey(name)
+		if err != nil {
+			return err
+		}
+		if _, ok := a.env[key]; !ok {
+			set[key] = secrets[name]
+		}
+		a.secret[name] = secrets[name]
+	}
+	if len(set) > 0 {
+		for k, v := range set {
+			a.env[k] = v
+		}
+		fb.logf("env:%s:%d", ref, len(set))
+	}
+
+	// ports: exposure per mode (proxy declares; else none).
+	if spec.Routing.Mode == domain.RoutingProxy {
+		desired := append([]domain.Port(nil), spec.Ports...)
+		if !portsEqualFake(a.ports, desired) {
+			a.ports = desired
+			fb.logf("ports:%s:%d", ref, len(desired))
+		}
+	} else if len(a.ports) > 0 {
+		a.ports = nil
+		fb.logf("ports:%s:0", ref)
+	}
+
+	// domains: proxy declarations only (Apply's documented rule).
+	if spec.Routing.Mode == domain.RoutingProxy {
+		want := sortedStrings(spec.Routing.Domains)
+		have := sortedStrings(a.domains)
+		if !slices.Equal(want, have) {
+			a.domains = append([]string(nil), spec.Routing.Domains...)
+			fb.logf("domains:%s:%d", ref, len(want))
+		}
+	}
+
+	// network: internal attaches the shared network; other modes detach.
+	if spec.Routing.Mode == domain.RoutingInternal {
+		if !slices.Contains(a.networks, topInternalNetwork) {
+			a.networks = append(a.networks, topInternalNetwork)
+			fb.logf("network-attach:%s:%s", ref, topInternalNetwork)
+		}
+	} else if slices.Contains(a.networks, topInternalNetwork) {
+		nets := a.networks[:0]
+		for _, n := range a.networks {
+			if n != topInternalNetwork {
+				nets = append(nets, n)
+			}
+		}
+		a.networks = nets
+		fb.logf("network-detach:%s:%s", ref, topInternalNetwork)
+	}
+
+	// restart policy (spec default always, the Apply rule).
+	wantPol := spec.RestartPolicy
+	if wantPol == "" {
+		wantPol = domain.RestartAlways
+	}
+	if a.restartPol != wantPol {
+		a.restartPol = wantPol
+		fb.logf("restart:%s", ref)
+	}
+
+	// deploy: image sources skip when the observed image matches AND the
+	// release is serving; builds skip at the same sha while serving.
+	switch {
+	case spec.Source.Image != "":
+		imageRef := spec.Source.Reference()
+		if a.image != imageRef || !a.running {
+			if a.failDeploy != nil {
+				return a.failDeploy
+			}
+			a.deployed = true
+			a.image = imageRef
+			if a.readinessHold <= 0 {
+				a.running = true
+			}
+			fb.logf("deploy:%s:%s", ref, imageRef)
+		}
+	case spec.Source.Build != nil:
+		rev := spec.Source.Build.Ref
+		if a.revision != rev || !a.running {
+			a.deployed = true
+			a.revision = rev
+			a.image = ""
+			if a.readinessHold <= 0 {
+				a.running = true
+			}
+			fb.logf("sync:%s:%s", ref, rev)
+		}
+	}
 	return nil
+}
+
+// portsEqualFake compares observed vs desired fake ports by the effective
+// host rule (unpinned host == container).
+func portsEqualFake(obs, desired []domain.Port) bool {
+	if len(obs) != len(desired) {
+		return false
+	}
+	for i := range obs {
+		if obs[i].ContainerPort != desired[i].ContainerPort {
+			return false
+		}
+		oh := obs[i].HostPort
+		if oh == 0 {
+			oh = obs[i].ContainerPort
+		}
+		dh := desired[i].HostPort
+		if dh == 0 {
+			dh = desired[i].ContainerPort
+		}
+		if oh != dh {
+			return false
+		}
+	}
+	return true
+}
+
+func sortedStrings(in []string) []string {
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	return out
 }
 
 // sequenceOf renders the recorded mutating call order.

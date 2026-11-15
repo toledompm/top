@@ -507,7 +507,11 @@ func TestControllerSelfServiceReportOnly(t *testing.T) {
 	}
 }
 
-func TestSourceBuildRevisionChangeFailsThisWave(t *testing.T) {
+// TestSourceBuildRevisionChangeConvergesViaApply: since convergence
+// delegates to backend.Apply (2026-11-15), a build source's revision
+// change is no longer the T-303 contained failure — Apply's build path
+// runs `git:sync --build-if-changes`. The fake mirrors it as `sync:`.
+func TestSourceBuildRevisionChangeConvergesViaApply(t *testing.T) {
 	h := newHarness(t)
 	builder := domain.Ref(domain.DefaultNamespace, "builder")
 	in := RunInput{
@@ -520,23 +524,24 @@ func TestSourceBuildRevisionChangeFailsThisWave(t *testing.T) {
 		Actor:    domain.ActorUser,
 	}
 	// The host already runs the OLD revision; the desired sha differs so
-	// the plan wants a revision change — which the v0 seam cannot apply.
+	// the plan wants a revision change — Apply's build path converges it.
 	h.backend.seed(builder, func(a *fakeApp) {
 		a.deployed = true
 		a.running = true
 		a.revision = strings.Repeat("1", 40)
 	})
 	res, err := h.run(t, in)
-	if res.Status != domain.RunFailed {
-		t.Fatalf("status %s, want failed (contained)", res.Status)
+	if res.Status != domain.RunSucceeded {
+		t.Fatalf("status %s, want succeeded: %v", res.Status, err)
 	}
-	for _, o := range res.Outcomes {
-		if !strings.Contains(o.Err, "git:sync") {
-			t.Errorf("outcome %+v must name the missing seam", o)
+	var syncs int
+	for _, s := range h.backend.sequenceOf() {
+		if strings.HasPrefix(s, "sync:") && strings.Contains(s, testRevision) {
+			syncs++
 		}
 	}
-	if vErr := err; err != nil && !strings.Contains(err.Error(), "git:sync") {
-		t.Logf("run error: %v", vErr)
+	if syncs != 1 {
+		t.Errorf("git:sync converging verbs %d, want 1: %v", syncs, h.backend.sequenceOf())
 	}
 }
 

@@ -30,19 +30,23 @@ Defined in `seam.go`; every real implementation must only *have* the
 methods — no import of this package required beyond types we share
 (`internal/domain`):
 
-- `Backend` — the reconciler's runtime seam. Mirrors today's adapter
-  (EnsureApp/Inspect/LastGoodRevision/Stop/Destroy/DeployImage/
-  EnsureNetwork/EnsureStorageEntry/AttachStorage/DetachStorage) plus NEW
-  convergence methods required of internal/dokku THIS WAVE (exact shapes
-  in seam.go; `config:set --no-restart` semantics etc.):
-  `SetConfigEnv, SetSecretEnv, SetPorts, SetDomains, SetRestartPolicy,
-  AttachNetwork`.
+- `Backend` — the reconciler's runtime seam. Mirrors the adapter's
+  integrator surface (EnsureApp/Inspect/LastGoodRevision/Stop/Destroy/
+  DeployImage/EnsureNetwork/EnsureStorageEntry/AttachStorage/
+  DetachStorage) plus ONE convergence primitive, `backend.Apply`
+  (the contract's converge: env, restart policy, storage [skippable —
+  the reconciler owns host-dir lifecycle, ADR-0009], network, ports,
+  domains, resources, deploy; zero-mutation guards). The per-field
+  setter methods this seam carried until 2026-11-15 (SetConfigEnv,
+  SetSecretEnv, SetPorts, SetDomains, SetRestartPolicy, AttachNetwork)
+  were removed: a parallel converge implementation that had already
+  drifted from Apply (internal-mode ports shipped host mappings).
 - `StateStore = store.Store` — the persistence seam (aliased: v0 has one
   SQLite implementation; the name is the seam, the type is the contract).
 - `Clock` (`Now`, `Wait`) — pacing/deadlines; `WallClock` default, fake in
   tests so --race never sleeps.
 - `SecretResolver` — name → value at apply time (ADR-0008); values pass
-  straight to `SetSecretEnv`, never logged.
+  straight into `Backend.Apply`'s secrets map, never logged.
 - `PruneGate` — the ADR-0009 two-key delete rule; default
   `LedgerPruneGate{store, snapshot func, namespaces}` delegating to
   `inventory.Deletable`. Prune NEVER deletes directly.
@@ -102,14 +106,26 @@ the judged posture:
 
 ## Applying (what a service's apply does)
 
-`EnsureApp → ledger(ADR-0009 app row) → field changes from the plan →
-DeployImage only when the revision changed (DeployImage is not
-no-op-safe) → readiness gate`. Field families: plain env (additive set),
-secret refs (resolve → set), ports/domains (full replace), networks
-(attach only; removals left as sink), storage (ensure entry under
-`<VolumeRoot>/<app>-<entry>` — a missing `VolumeRoot` REFUSES to mount
-un-owned host dirs), restart policy. Source-build revision changes are a
-CONTAINED failure this wave (the `git:sync` seam is T-303's).
+`EnsureApp → storage (change-driven, reconciler-owned host dirs) →
+backend.Apply (SkipStorage) → readiness gate`. Apply converges every
+non-storage family with its own zero-mutation guards: plain env (key-set
+delta, additive + unset), secret refs (resolved up front → env under the
+domain.SecretEnvKey mapped keys), network (internal attaches the shared
+network, other modes detach), ports/domains (proxy declares, full
+replace), resource limits, and the deploy — whose obs-based skip rules
+keep a converged or rebooted host from re-running deploy verbs (the
+t504 invariant). Source-build revision changes converge through Apply's
+`git:sync --build-if-changes` path (the T-303 seam gap closed by the
+delegation). The plan stays the diff/ledger vocabulary; per-field
+changes are what `topctl diff` and the run report show, while Apply is
+what the host sees — the two cannot drift apart anymore, which is the
+point of having ONE converge primitive.
+
+Storage is the one deliberate exception: entries and mounts converge
+change-driven here, under `<VolumeRoot>/<app>-<entry>` — a missing
+`VolumeRoot` REFUSES to mount un-owned host dirs (ADR-0009). Apply is
+called with `SkipStorage` so its installer-tier default host-dir shape
+never races this one.
 
 ## Idempotency
 
