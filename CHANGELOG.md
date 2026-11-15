@@ -6,6 +6,17 @@ file is human-owned — goreleaser emits machine-generated per-release notes
 from commit subjects, and `CHANGELOG.md` is curated per release. Versions
 follow [SemVer](https://semver.org) (tags: `v0.X.Y`).
 
+## [v0.1.8] — 2026-11-15 (resources phantom + shared quantity vocabulary)
+
+### Fixed
+- Resource-limit comparison in the plan is semantic (K8s-style spec
+  spellings vs dokku's stored docker-native ones mean the same limits):
+  the literal compare re-proposed a resources change on every run,
+  keeping every plan non-empty so converged services re-ran Apply —
+  and on the live fleet that re-drove deploys that should never have
+  been attempted. The quantity translation moved to `internal/domain`
+  as shared vocabulary for both apply paths.
+
 ## [v0.1.7] — 2026-11-15 (failure-report tail fix)
 
 ### Fixed
