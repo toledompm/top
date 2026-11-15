@@ -70,6 +70,40 @@ func wrapBackend(op, app string, err error) error {
 	return &BackendError{Op: op, App: app, Err: err}
 }
 
+// stdoutExitError decorates a failed dokku command with a redacted stdout
+// excerpt. Under sudo/non-TTY, dokku writes its failure text to STDOUT
+// (the same stream choice that puts the no-changes marker on stdout —
+// DeployImage's classifier keys on both), so a deploy failure carrying
+// only the stderr excerpt renders as a bare "exit 1" with no reason
+// (media-server 2026-11-14: a manifest-unknown git:from-image surfaced
+// as exactly that). The stdout buffer is already redacted by the exec
+// layer before return (ADR-0008); the adapter only trims it.
+type stdoutExitError struct {
+	err    error
+	stdout string
+}
+
+func (e *stdoutExitError) Error() string {
+	if t := strings.TrimSpace(e.stdout); t != "" {
+		if len(t) > exec.ExcerptLimit {
+			t = t[:exec.ExcerptLimit] + "…"
+		}
+		return fmt.Sprintf("%v (stdout: %s)", e.err, t)
+	}
+	return e.err.Error()
+}
+
+func (e *stdoutExitError) Unwrap() error { return e.err }
+
+// wrapDeployFailure folds a failed deploy command into a BackendError
+// carrying the command's stdout excerpt (see stdoutExitError).
+func wrapDeployFailure(err error, op, app, stdout string) error {
+	if err == nil {
+		return nil
+	}
+	return wrapBackend(op, app, &stdoutExitError{err: err, stdout: stdout})
+}
+
 // wrapHealth folds a backend-health failure into a *BackendError whose
 // class is ErrUnhealthy (the backend itself, not one operation, is broken).
 func wrapHealth(op, app string, err error) error {

@@ -516,7 +516,9 @@ func (c *Client) deploy(ctx context.Context, app string, spec domain.Service, ob
 		}
 		return nil
 	}
-	return wrapMaybe(derr, "deploy image", app)
+	// Real failure: carry the stdout excerpt (see stdoutExitError in
+	// errors.go — under sudo/non-TTY dokku's failure text rides stdout).
+	return wrapDeployFailure(derr, "deploy image", app, string(stdout))
 }
 
 // deployArchive streams the synthesized tar through the StdinRunner seam

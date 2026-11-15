@@ -7,6 +7,7 @@ package dokku
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/toledompm/top/internal/domain"
@@ -54,6 +55,45 @@ func TestDeployImageNoChangesIsSuccess(t *testing.T) {
 	}, "git:from-image", "core-top-controller", theImage())
 	if err := newC(f2).DeployImage(context.Background(), ctlRef, theImage()); err == nil {
 		t.Fatal("non-no-changes exit-1 must still fail")
+	}
+}
+
+// TestDeployImageFailureCarriesStdoutExcerpt pins the media-server
+// 2026-11-14 finding: under sudo/non-TTY dokku writes its failure text
+// to STDOUT, and exec.ExitError only embeds stderr — so a real deploy
+// failure surfaced as a bare "exit 1" with no reason (manifest unknown
+// was invisible). The failure error must carry a trimmed stdout excerpt;
+// a stderr excerpt (when dokku chose stderr) still rides ExitError's own
+// rendering.
+func TestDeployImageFailureCarriesStdoutExcerpt(t *testing.T) {
+	t.Parallel()
+
+	// stdout-only failure (the sudo/non-TTY shape): the reason must show.
+	f := exectest.NewFakeRunner()
+	f.SetOutput("dokku", exectest.Response{
+		ExitCode: 1,
+		Stdout:   []byte("! pull failure: manifest for docker.io/mccutchen/go-httpbin:v2.26.0 not found"),
+	}, "git:from-image", "core-top-controller", theImage())
+	err := newC(f).DeployImage(context.Background(), ctlRef, theImage())
+	if err == nil {
+		t.Fatal("real failure must fail")
+	}
+	if !strings.Contains(err.Error(), "stdout: ! pull failure") {
+		t.Errorf("error %q must carry the stdout excerpt", err)
+	}
+
+	// stderr-only failure: ExitError renders the stderr excerpt as before.
+	f2 := exectest.NewFakeRunner()
+	f2.SetOutput("dokku", exectest.Response{
+		ExitCode: 1,
+		Stderr:   []byte("!     some other dokku failure"),
+	}, "git:from-image", "core-top-controller", theImage())
+	err2 := newC(f2).DeployImage(context.Background(), ctlRef, theImage())
+	if err2 == nil {
+		t.Fatal("real failure must fail")
+	}
+	if !strings.Contains(err2.Error(), "some other dokku failure") {
+		t.Errorf("error %q must carry the stderr excerpt", err2)
 	}
 }
 

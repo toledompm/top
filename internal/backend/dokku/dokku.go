@@ -458,7 +458,11 @@ func (c *Client) DeployImage(ctx context.Context, ref domain.ServiceRef, imageRe
 				strings.Contains(stdout, "No changes detected")) {
 			return nil
 		}
-		return err
+		// Real failure: carry the stdout excerpt — under sudo/non-TTY
+		// dokku's failure text rides stdout, and the exec layer's
+		// ExitError only embeds stderr (a bare "exit 1" hides the reason;
+		// media-server 2026-11-14: manifest-unknown surfaced with none).
+		return wrapDeployFailure(err, "deploy image", app, stdout)
 	}
 	return nil
 }
