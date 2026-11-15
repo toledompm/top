@@ -91,8 +91,8 @@ func (WallClock) Wait(ctx context.Context, d time.Duration) error {
 
 // SecretResolver resolves secret references to their values at apply time
 // (ADR-0008: names travel through specs and plans; only the apply step
-// turns a name into a value). Resolved values are passed straight to
-// Backend.SetSecretEnv and never logged or recorded.
+// turns a name into a value). Resolved values are passed straight into
+// Backend.Apply's secrets map and never logged or recorded.
 type SecretResolver interface {
 	// Resolve returns the secret value for name and its version (e.g. a
 	// content checksum). An unresolvable reference is an error.

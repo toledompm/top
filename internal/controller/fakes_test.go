@@ -330,8 +330,8 @@ func (fb *fakeBackend) DeployImage(ctx context.Context, ref domain.ServiceRef, i
 	return nil
 }
 
-// The remaining convergence verbs are faithful no-ops: this fake's runs
-// converge on plain image services and never cross these families.
+// LastGoodRevision is unset in this fake: daemon tests converge on plain
+// image services and never read the recorded last-good.
 func (fb *fakeBackend) LastGoodRevision(context.Context, domain.ServiceRef) (string, error) {
 	return "", fmt.Errorf("%w: fake last-good unset", domain.ErrNotFound)
 }
@@ -346,20 +346,6 @@ func (fb *fakeBackend) AttachStorage(context.Context, domain.ServiceRef, string,
 func (fb *fakeBackend) DetachStorage(context.Context, domain.ServiceRef, string, string) error {
 	return nil
 }
-
-func (fb *fakeBackend) SetConfigEnv(context.Context, domain.ServiceRef, map[string]string) error {
-	return nil
-}
-
-func (fb *fakeBackend) SetSecretEnv(context.Context, domain.ServiceRef, string, string) error {
-	return nil
-}
-func (fb *fakeBackend) SetPorts(context.Context, domain.ServiceRef, []domain.Port) error { return nil }
-func (fb *fakeBackend) SetDomains(context.Context, domain.ServiceRef, []string) error    { return nil }
-func (fb *fakeBackend) SetRestartPolicy(context.Context, domain.ServiceRef, domain.RestartPolicy) error {
-	return nil
-}
-func (fb *fakeBackend) AttachNetwork(context.Context, domain.ServiceRef, string) error { return nil }
 
 // Apply is the seam's convergence primitive. This fake's runs converge
 // on plain image services: the deploy behavior — including the
