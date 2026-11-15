@@ -7,6 +7,12 @@ Decision record: ADR-0012. This page is the operational how-to.
 | Tier | What | Where it runs | Gate |
 | --- | --- | --- | --- |
 | 1 Unit | domain, spec parse/validate, diff/plan, reconcile logic, sqlite store, webhook verify/dedup, redaction | every PR, seconds | none |
+
+Tier 1 runs the REAL implementations over scripted process boundaries —
+the real adapter over `exectest`, the real store over temp-file DBs
+(ADR-0012 amendment A1, 2026-11-15: fakes of TOP's own contracts are
+banned; the reconcile/controller hand-rolled test backends are
+scheduled for replacement).
 | 2 Shim | real `exec.Runner` against a fake `dokku` script on PATH (records argv, canned stdout, exit codes) | every PR, seconds | none |
 | 3 Real-Dokku | official `dokku/dokku` image, host docker.sock mounted (sibling topology), via testcontainers-go | PRs touching the adapter + nightly; local: `TOP_E2E=1 go test ./internal/backend/dokku/...` | `TOP_E2E=1` |
 | 4 Full e2e | disposable VM (Lima template in `test/e2e/`, cloud-init: Docker + Dokku + top) running the scripted acceptance suite | nightly, releases, on demand: `test/e2e/run.sh` | none (self-contained) |

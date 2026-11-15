@@ -60,6 +60,34 @@ pass on a fork with zero secrets configured (tiers 1–3 only).
 - **Author's homelab as the CI e2e host** — violates ADR-0014 and makes a
   private host load-bearing for validating product behavior. Rejected.
 
+## Amendment A1 (2026-11-15, operator decision; status unchanged — accepted)
+
+**Fakes of TOP's own contracts are banned.** The only test doubles are at
+the PROCESS boundary: the `exec.Runner` fake (scripted stdout/exit codes)
+and the tier-2 shim `dokku` script. Hermetic tests exercise the REAL
+implementations — the real Dokku adapter over the scripted runner, the
+real SQLite store over a temp file, the real inventory/prune gate — so
+TOP's semantics have exactly one implementation to keep honest.
+
+Rationale (live finding, media-server 2026-11-14/15): the reconcile and
+controller test suites carried hand-rolled in-memory backends whose
+comment read "mutates the way the real adapter's verbs change the host"
+— a second, untested-against-reality implementation of adapter
+semantics. Its drift from the real adapter shipped bugs to production
+that tier-1 could not see (internal-mode port mappings converging onto
+contested host ports). A fake that mirrors semantics is a fork of the
+contract; a scripted process boundary is not — it pins the REAL code's
+argv behavior and the report parsing with it.
+
+Rule for reviewers: a new `_test.go` file may script `exectest`
+responses and use real constructors; it may not define a type that
+satisfies `backend.PlatformBackend`, `store.Store`, or any other TOP
+contract interface. If a test seems to NEED such a fake, the fix is in
+the real implementation's testability (seams at the process boundary),
+not in a new double. Existing fakes (reconcile/controller test
+backends, per-package fake stores) are scheduled for replacement under
+this rule.
+
 ## Consequences (amended 2026-10-27 per T-112 review)
 
 - Tier-2 shim suite (`make test-shim`) runs in PR CI as its own job; the
