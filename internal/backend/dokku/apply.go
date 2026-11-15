@@ -59,6 +59,26 @@ func (c *Client) Apply(ctx context.Context, ref domain.ServiceRef, spec domain.S
 		spec.RestartPolicy = domain.RestartAlways
 	}
 
+	// Resolved secret values ride argv (config:set) — register them with
+	// the exec layer's redaction seed BEFORE any command runs, so a
+	// failed command's captured output can never echo one (ADR-0008;
+	// live finding 2026-11-15: an invalid-key config:set failure echoed
+	// the grafana secret value because the seed never learned it — the
+	// old per-field path's dash-kebab key never failed, so the gap stayed
+	// invisible). Just-in-time per Apply: the values are caller-resolved
+	// and unknowable at construction.
+	if seeder, ok := c.Runner.(exec.RedactionSeeder); ok {
+		vals := make([]string, 0, len(secrets))
+		for _, v := range secrets {
+			if v != "" {
+				vals = append(vals, v)
+			}
+		}
+		if len(vals) > 0 {
+			seeder.SeedRedaction(vals...)
+		}
+	}
+
 	if err := c.EnsureApp(ctx, ref); err != nil {
 		return wrapBackend("apply ensure app", app, err)
 	}
@@ -184,7 +204,16 @@ func (c *Client) applyEnv(ctx context.Context, app string, spec domain.Service, 
 		env = map[string]string{}
 	}
 	for _, name := range spec.SecretRefs {
-		env[name] = secrets[name] // missing resolution is spec validation's job upstream
+		// The env KEY is the mapped dash-kebab form (domain.SecretEnvKey,
+		// the T-403 rule every env-writing path runs by): the raw NAME is
+		// service-name syntax (lowercase+dashes) and dokku rejects it as
+		// an invalid config key (live finding 2026-11-15: grafana's
+		// gf-security-admin-password must land as GF_SECURITY_ADMIN_PASSWORD).
+		key, kerr := domain.SecretEnvKey(name)
+		if kerr != nil {
+			return wrapBackend("apply env set", app, fmt.Errorf("%w: secret ref %q: %v", domain.ErrInvalid, name, kerr))
+		}
+		env[key] = secrets[name] // missing resolution is spec validation's job upstream
 	}
 	if len(env) == 0 && len(obs.EnvKeys) == 0 {
 		return nil

@@ -85,6 +85,25 @@ type FakeRunner struct {
 	seqTails     []Response   // answer AFTER the sequence is exhausted
 	seqDone      map[int]int  // calls already served by each scripted entry
 	nextSeqEntry int
+
+	// seeds records every SeedRedaction value (adapter tests assert the
+	// adapter registers caller-resolved secret values BEFORE a command
+	// carries them in argv).
+	seeds []string
+}
+
+// SeedRedaction implements exec.RedactionSeeder.
+func (f *FakeRunner) SeedRedaction(values ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.seeds = append(f.seeds, values...)
+}
+
+// SeedsOf returns the registered redaction values.
+func (f *FakeRunner) SeedsOf() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.seeds...)
 }
 
 // NewFakeRunner returns a ready-to-use fake.

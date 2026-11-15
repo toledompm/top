@@ -35,6 +35,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -112,8 +113,12 @@ type FastExec struct {
 	// RedactSeed registers secret *values*. Every occurrence in captured
 	// stdout/stderr and in any error string produced here is replaced with
 	// "***" before anything leaves this package. Register the value, not the
-	// name (names may appear anywhere).
+	// name (names may appear anywhere). Mutate via SeedRedaction (thread-
+	// safe); direct field writes are construction-time only.
 	RedactSeed []string
+
+	// mu guards runtime mutation of RedactSeed (SeedRedaction).
+	mu sync.Mutex
 
 	// WaitDelay bounds how long a cancelled child has between SIGTERM and
 	// SIGKILL. Zero means DefaultWaitDelay.
@@ -279,18 +284,65 @@ func (f *FastExec) childEnv() []string {
 }
 
 // redact replaces secret values in captured output.
-func (f *FastExec) redact(b []byte) []byte { return Redact(b, f.RedactSeed) }
+// RedactionSeeder is the optional capability of a Runner that can accept
+// additional secret values for output redaction at RUNTIME. The adapter
+// registers caller-resolved secret values before any argv carries them
+// (ADR-0008: resolved values may legitimately appear in a command's
+// captured output when a command fails — e.g. dokku echoing an invalid
+// key — and the redaction layer must know them).
+type RedactionSeeder interface {
+	SeedRedaction(values ...string)
+}
+
+// SeedRedaction appends values to the redaction seed (thread-safe).
+func (f *FastExec) SeedRedaction(values ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.RedactSeed = append(f.RedactSeed, values...)
+}
+
+func (f *FastExec) redact(b []byte) []byte { return Redact(b, f.redactSeed()) }
+
+// redactSeed snapshots the seed under the mutation lock (the reconciler
+// seeds values while runs are in flight).
+func (f *FastExec) redactSeed() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.RedactSeed
+}
+
+// Clone returns a per-call copy of f for immutable-clone runners
+// (gitsource, install repo init): public fields copied, the seed slice
+// duplicated so a later SeedRedaction on either copy can never alias the
+// other's backing array. The mutex is zeroed — copies are immutable
+// snapshots.
+func (f *FastExec) Clone() *FastExec {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c := &FastExec{
+		Dir:            f.Dir,
+		EnvPassthrough: append([]string(nil), f.EnvPassthrough...),
+		ExtraEnv:       nil,
+		EnvInheritAll:  f.EnvInheritAll,
+		RedactSeed:     append([]string(nil), f.RedactSeed...),
+		WaitDelay:      f.WaitDelay,
+	}
+	if f.ExtraEnv != nil {
+		c.ExtraEnv = append([]string(nil), f.ExtraEnv...)
+	}
+	return c
+}
 
 // redactErr applies redaction to an error before it may surface in operation
 // records or logs. Sentinel identity (ErrTimeout) is preserved; other chain
 // detail is folded into the redacted rendering so no seed can leak through a
 // later Unwrap.
 func (f *FastExec) redactErr(err error) error {
-	if err == nil || len(f.RedactSeed) == 0 {
+	if err == nil || len(f.redactSeed()) == 0 {
 		return err
 	}
 	if errors.Is(err, ErrTimeout) {
-		return fmt.Errorf("%s: %w", RedactString(err.Error(), f.RedactSeed), ErrTimeout)
+		return fmt.Errorf("%s: %w", RedactString(err.Error(), f.redactSeed()), ErrTimeout)
 	}
 	// Preserve ExitError identity so callers' errors.As checks keep working;
 	// redact any seed that may sit in argv.
@@ -298,12 +350,12 @@ func (f *FastExec) redactErr(err error) error {
 	if errors.As(err, &ee) {
 		r := *ee
 		for i, a := range r.Args {
-			r.Args[i] = RedactString(a, f.RedactSeed)
+			r.Args[i] = RedactString(a, f.redactSeed())
 		}
 		r.Stderr = f.redact(ee.Stderr)
 		return &r
 	}
-	return errors.New(RedactString(err.Error(), f.RedactSeed))
+	return errors.New(RedactString(err.Error(), f.redactSeed()))
 }
 
 // Redact replaces every occurrence of each seed value in data with "***".
