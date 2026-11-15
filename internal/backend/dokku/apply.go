@@ -628,7 +628,18 @@ func (c *Client) deployArchive(ctx context.Context, app, imageRef string, spec d
 		c.setArchiveFingerprint(ctx, app, archiveSHA)
 		return nil
 	}
-	return wrapBackend("deploy archive", app, fmt.Errorf("%w (dokku output tail: %.1200s)", rerr, combined))
+	// The failure reason lives at the END of dokku's output (the
+	// successful boilerplate — tar fetch, git update, build header —
+	// precedes it). A head-excerpt here wasted the whole budget before
+	// the buildkit error line ever appeared (media-server 2026-11-15:
+	// three archive failures rendered the identical successful prefix
+	// and cut right before "load metadata" error text). Tail, not head.
+	const maxTail = 1200
+	tail := combined
+	if len(tail) > maxTail {
+		tail = tail[len(tail)-maxTail:]
+	}
+	return wrapBackend("deploy archive", app, fmt.Errorf("%w (dokku output tail: %s)", rerr, tail))
 }
 
 // setArchiveFingerprint mints TOP_ARCHIVE_SHA256 = sha via config:set
