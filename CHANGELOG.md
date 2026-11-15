@@ -6,7 +6,7 @@ file is human-owned — goreleaser emits machine-generated per-release notes
 from commit subjects, and `CHANGELOG.md` is curated per release. Versions
 follow [SemVer](https://semver.org) (tags: `v0.X.Y`).
 
-## [Unreleased]
+## [v0.1.5] — 2026-11-15 (converge unification + port exposure)
 
 ### Fixed
 - Port exposure follows `routing.mode` (`internal/plan`): internal-mode
