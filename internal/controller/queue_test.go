@@ -141,8 +141,26 @@ func TestQueuePumpRunsEachDequeuedExactlyOnce(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("pump did not exit after close+drain")
 	}
-	if got := q.DrainedCount(); got != 2 {
-		t.Fatalf("drained count got %d, want 2", got)
+	// Drain count: Close DISCARDS pending triggers
+	// (TestQueueCloseDiscardsPendingAndRejects), so whether the second
+	// trigger was already dequeued when Close landed is a race — both
+	// orders are correct. 1 = only the active run drained; 2 = the
+	// second was taken pre-Close. The invariant THIS test owns is
+	// exactly-once: every drained trigger ran its callback at most once
+	// (pinned below). ==2 was a pre-existing flake under -race on slow
+	// CI runners (first seen 2026-11-15).
+	switch got := q.DrainedCount(); got {
+	case 1, 2:
+	default:
+		t.Fatalf("drained count got %d, want 1 or 2", got)
+	}
+	close(done) // the pump has exited: no further sends
+	seen := map[string]int{}
+	for id := range done {
+		seen[id]++
+		if seen[id] > 1 {
+			t.Fatalf("trigger %q ran more than once", id)
+		}
 	}
 }
 
