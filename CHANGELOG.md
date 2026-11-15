@@ -6,6 +6,15 @@ file is human-owned — goreleaser emits machine-generated per-release notes
 from commit subjects, and `CHANGELOG.md` is curated per release. Versions
 follow [SemVer](https://semver.org) (tags: `v0.X.Y`).
 
+## [v0.1.7] — 2026-11-15 (failure-report tail fix)
+
+### Fixed
+- The archive-deploy failure excerpt now takes the TAIL of dokku's
+  output: the head-excerpt spent its entire budget on the successful
+  boilerplate (tar fetch, git update, build header) and cut right
+  before buildkit's actual error line, rendering three live failures
+  with no visible reason.
+
 ## [v0.1.6] — 2026-11-15 (archive-deploy readiness fix)
 
 ### Fixed
