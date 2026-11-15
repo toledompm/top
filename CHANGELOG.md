@@ -6,6 +6,15 @@ file is human-owned — goreleaser emits machine-generated per-release notes
 from commit subjects, and `CHANGELOG.md` is curated per release. Versions
 follow [SemVer](https://semver.org) (tags: `v0.X.Y`).
 
+## [v0.1.6] — 2026-11-15 (archive-deploy readiness fix)
+
+### Fixed
+- Archive-deployed apps (the checks-carrying `git:from-archive` path)
+  now pass the reconcile readiness gate on the archive fingerprint's
+  presence instead of an image reference dokku never records for tar
+  deploys — the cadvisor conversion on the live fleet deployed fine and
+  then failed readiness for its whole 3m deadline on `image=""`.
+
 ## [v0.1.5] — 2026-11-15 (converge unification + port exposure)
 
 ### Fixed
