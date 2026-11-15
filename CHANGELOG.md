@@ -6,6 +6,15 @@ file is human-owned — goreleaser emits machine-generated per-release notes
 from commit subjects, and `CHANGELOG.md` is curated per release. Versions
 follow [SemVer](https://semver.org) (tags: `v0.X.Y`).
 
+## [Unreleased]
+
+### Fixed
+- Secret env keys under delegated Apply map through the dash-kebab rule
+  (dokku rejected the raw service-name as an invalid config key), and
+  resolved secret values are registered with the exec layer's redaction
+  seed before any command carries them — a config:set failure no longer
+  echoes the value.
+
 ## [v0.1.8] — 2026-11-15 (resources phantom + shared quantity vocabulary)
 
 ### Fixed
