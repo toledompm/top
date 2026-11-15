@@ -582,13 +582,26 @@ func changeRestartPolicy(d domain.Service, o domain.ObservedState) []domain.Fiel
 // drops it, modified on value change. A fully-unreported observed
 // Resources (zero value) is skipped — the backend did not answer, so
 // comparing would invent drift.
+//
+// The comparison is SEMANTIC (domain.CPUCoresSame/MemorySame): dokku
+// stores docker-native spellings ("0.5", "268435456") while the spec
+// carries K8s-style ones ("500m", "256Mi") for the same limits — a
+// literal compare re-proposed converged limits on every run (the
+// resources phantom, media-server 2026-11-15: it kept every plan
+// non-empty, so no-op services re-ran Apply and re-drove deploys that
+// should never have been attempted). Unparseable values fall back to
+// string equality.
 func changeResources(d domain.Service, o domain.ObservedState) []domain.FieldChange {
 	if o.Resources == (domain.Resources{}) {
 		return nil
 	}
 	var cs []domain.FieldChange
-	cs = append(cs, limitChange("resources.cpu", d.Resources.Limits.CPU, o.Resources.Limits.CPU)...)
-	cs = append(cs, limitChange("resources.memory", d.Resources.Limits.Memory, o.Resources.Limits.Memory)...)
+	if !domain.CPUCoresSame(d.Resources.Limits.CPU, o.Resources.Limits.CPU) {
+		cs = append(cs, limitChange("resources.cpu", d.Resources.Limits.CPU, o.Resources.Limits.CPU)...)
+	}
+	if !domain.MemorySame(d.Resources.Limits.Memory, o.Resources.Limits.Memory) {
+		cs = append(cs, limitChange("resources.memory", d.Resources.Limits.Memory, o.Resources.Limits.Memory)...)
+	}
 	return cs
 }
 

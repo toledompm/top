@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-package dokku
+package domain
 
 import "testing"
 
@@ -22,7 +22,7 @@ func TestParseMemoryBytes(t *testing.T) {
 		"-1Gi":  {plural: false},
 	}
 	for q, c := range cases {
-		got, ok := parseMemoryBytes(q)
+		got, ok := ParseMemoryBytes(q)
 		if ok != c.plural {
 			t.Errorf("%q: ok=%v want %v", q, ok, c.plural)
 		}
@@ -45,7 +45,7 @@ func TestParseCPUCores(t *testing.T) {
 		"x":     {plural: false},
 	}
 	for q, c := range cases {
-		got, ok := parseCPUCores(q)
+		got, ok := ParseCPUCores(q)
 		if ok != c.plural {
 			t.Errorf("%q: ok=%v want %v", q, ok, c.plural)
 		}
@@ -67,8 +67,8 @@ func TestQuantitySameCPU(t *testing.T) {
 		{"weird", "weird", true},
 		{"weird", "odd", false},
 	} {
-		if got := cpuSame(c.a, c.b); got != c.want {
-			t.Errorf("cpuSame(%q,%q)=%v want %v", c.a, c.b, got, c.want)
+		if got := CPUCoresSame(c.a, c.b); got != c.want {
+			t.Errorf("CPUCoresSame(%q,%q)=%v want %v", c.a, c.b, got, c.want)
 		}
 	}
 }
@@ -86,24 +86,24 @@ func TestQuantitySameMem(t *testing.T) {
 		{"weird", "weird", true},
 		{"weird", "odd", false},
 	} {
-		if got := memSame(c.a, c.b); got != c.want {
-			t.Errorf("memSame(%q,%q)=%v want %v", c.a, c.b, got, c.want)
+		if got := MemorySame(c.a, c.b); got != c.want {
+			t.Errorf("MemorySame(%q,%q)=%v want %v", c.a, c.b, got, c.want)
 		}
 	}
 }
 
 func TestFormatQuantities(t *testing.T) {
-	if s := formatMemoryBytes(parseMust(t, "256Mi")); s != "268435456" {
+	if s := FormatMemoryBytes(parseMust(t, "256Mi")); s != "268435456" {
 		t.Errorf("memory: %q", s)
 	}
-	if s := formatCPUCores(parseMustCPU(t, "500m")); s != "0.5" {
+	if s := FormatCPUCores(parseMustCPU(t, "500m")); s != "0.5" {
 		t.Errorf("cpu: %q", s)
 	}
 }
 
 func parseMust(t *testing.T, q string) int64 {
 	t.Helper()
-	v, ok := parseMemoryBytes(q)
+	v, ok := ParseMemoryBytes(q)
 	if !ok {
 		t.Fatalf("%q unparseable", q)
 	}
@@ -112,7 +112,7 @@ func parseMust(t *testing.T, q string) int64 {
 
 func parseMustCPU(t *testing.T, q string) float64 {
 	t.Helper()
-	v, ok := parseCPUCores(q)
+	v, ok := ParseCPUCores(q)
 	if !ok {
 		t.Fatalf("%q unparseable", q)
 	}

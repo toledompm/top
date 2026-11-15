@@ -562,3 +562,33 @@ func TestComputeObservedDefaultHostPortIsUnpinned(t *testing.T) {
 		t.Fatalf("observed host==container default must converge, got:\n%s", p)
 	}
 }
+
+// TestComputeResourcesQuantityNoiseIsConverged pins the resources
+// phantom fix (media-server 2026-11-15): dokku stores docker-native
+// spellings ("0.5", "536870912") while the spec carries K8s-style ones
+// ("500m", "512Mi") for the same limits — the literal compare re-proposed
+// a resources change on every run, keeping every plan non-empty and
+// re-driving Apply (and its deploys) on services that were converged.
+func TestComputeResourcesQuantityNoiseIsConverged(t *testing.T) {
+	d := baseService() // CPU 500m, memory 512Mi
+	obs := obsFor(d)
+	// Dokku's docker-native spellings of the SAME limits.
+	obs.Resources.Limits.CPU = "0.5"
+	obs.Resources.Limits.Memory = "536870912"
+	if p := Compute(d, obs); !p.Empty() {
+		t.Fatalf("docker-native spellings of the same limits must converge, got:\n%s", p)
+	}
+
+	// A real difference still fires.
+	obs.Resources.Limits.CPU = "0.2"
+	sp := Compute(d, obs)
+	var cpuChange bool
+	for _, c := range sp.Changes {
+		if c.Path == "resources.cpu" {
+			cpuChange = true
+		}
+	}
+	if !cpuChange {
+		t.Fatalf("a genuinely different limit must fire resources.cpu, got %v", sp.Changes)
+	}
+}
