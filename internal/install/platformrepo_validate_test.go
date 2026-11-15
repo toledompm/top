@@ -24,7 +24,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/toledompm/top/internal/reconcile"
+	"github.com/toledompm/top/internal/domain"
 	"github.com/toledompm/top/internal/spec"
 )
 
@@ -155,12 +155,12 @@ func TestTemplateGrafanaSecretRefNotInline(t *testing.T) {
 		}
 		// ADR-0008 + the T-403 dash-kebab rule: the secret NAME is the
 		// dash-kebab form of the env var it feeds (README "T-403 wiring"
-		// item 6); the reconciler's secretEnvKey maps it to
+		// item 6); domain.SecretEnvKey maps it to
 		// GF_SECURITY_ADMIN_PASSWORD at apply time.
 		if len(svc.SecretRefs) != 1 || svc.SecretRefs[0] != "gf-security-admin-password" {
 			t.Errorf("grafana secretRefs = %v, want [gf-security-admin-password] (README item 6 mapping: GF_SECURITY_ADMIN_PASSWORD's dash-kebab form)", svc.SecretRefs)
-		} else if got, err := reconcile.SecretEnvKey("gf-security-admin-password"); err != nil || got != "GF_SECURITY_ADMIN_PASSWORD" {
-			t.Errorf("grafana secretRef does not map to GF_SECURITY_ADMIN_PASSWORD via reconcile.SecretEnvKey (rule drift between template and reconciler): %q, %v", got, err)
+		} else if got, err := domain.SecretEnvKey("gf-security-admin-password"); err != nil || got != "GF_SECURITY_ADMIN_PASSWORD" {
+			t.Errorf("grafana secretRef does not map to GF_SECURITY_ADMIN_PASSWORD via domain.SecretEnvKey (rule drift between template and apply paths): %q, %v", got, err)
 		}
 		if len(svc.DependsOn) != 1 || svc.DependsOn[0].String() != "observability/prometheus" {
 			t.Errorf("grafana dependsOn = %v, want [observability/prometheus] (intra-namespace, ADR-0004)", svc.DependsOn)

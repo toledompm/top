@@ -64,7 +64,10 @@ func TestSelfDeployApprovedHumanApplies(t *testing.T) {
 	if len(out.Changes) == 0 || !strings.Contains(strings.Join(out.Changes, "; "), "~revision: ghcr.io/toledompm/top/topctl:v0.1.0 → ghcr.io/toledompm/top/topctl:v2") {
 		t.Errorf("changes = %v, want the revision entry the gate applies", out.Changes)
 	}
-	if !strings.Contains(strings.Join(out.Changes, "; "), "+ports.http") {
+	// Field sets ride the same bundle (mode internal ⇒ no port proposal:
+	// exposure is none regardless of the declared port — the plan-side
+	// rule pinned in plan_test.go).
+	if !strings.Contains(strings.Join(out.Changes, "; "), "+networks.top-internal") {
 		t.Errorf("the whole drift bundle applies (field sets included): %v", out.Changes)
 	}
 	seq := fb.sequenceOf()

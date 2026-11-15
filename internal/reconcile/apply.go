@@ -93,6 +93,25 @@ func (r *Reconciler) applyAndGate(ctx context.Context, in RunInput, ordered []do
 			continue
 		}
 		sp, ok := planByRef[ref]
+		// Ownership bookkeeping runs for EVERY spec service, converged
+		// or not: the ledger row is the prune gate's "owned" key
+		// (ADR-0009), and an app that converges on day one and never
+		// drifts must still be on record. Idempotent; the controller-
+		// self row's lifecycle is adoption's (bootstrap-owned → managed),
+		// so the self ref is skipped here. (The pre-2026-11-15 behavior
+		// ledgered only drifted services — masked by the phantom port
+		// diff every noop app carried.)
+		if !ref.Equal(SelfRef) {
+			if lerr := r.ledgerApp(ctx, ref); lerr != nil {
+				res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
+					Ref: ref, Result: domain.OutcomeFailed,
+					Err:  fmt.Errorf("ledger app %s: %w", ref, lerr).Error(),
+					Hint: hintLogs,
+				})
+				failed[ref] = true
+				continue
+			}
+		}
 		if !ok || sp.Empty() {
 			// No plan entry (orphan-only ref) or a genuine noop: record.
 			res.Outcomes = append(res.Outcomes, domain.ServiceOutcome{
@@ -183,12 +202,12 @@ func (r *Reconciler) applyService(ctx context.Context, in RunInput, svc domain.S
 		app, _ := domain.AppName(svc.Ref.Namespace, svc.Ref.Name)
 		return fail(fmt.Errorf("ensure app %s: %w", app, err))
 	}
-	if err := r.ledgerApp(ctx, svc.Ref); err != nil {
-		return fail(fmt.Errorf("ledger app %s: %w", svc.Ref, err))
-	}
 
 	// 2. Apply the plan's field changes (apply anchors itself on what the
-	// plan observed; the same objects apply executed).
+	// plan observed; the same objects apply executed). Ownership is
+	// already on record — the run loop ledgerApps every spec service
+	// before this point, converged apps included (the ledger is the
+	// prune gate's "owned" key).
 	needed, err := r.applyChanges(ctx, in, svc, sp)
 	if err != nil {
 		return fail(err)
@@ -263,7 +282,7 @@ func (r *Reconciler) applyChanges(ctx context.Context, in RunInput, svc domain.S
 			// (README "T-403 wiring" item 6) — so `gf-security-admin-
 			// password` lands as GF_SECURITY_ADMIN_PASSWORD. The plan's
 			// vocabulary and this failure text keep the NAME.
-			envKey, kerr := SecretEnvKey(name)
+			envKey, kerr := domain.SecretEnvKey(name)
 			if kerr != nil {
 				return need, kerr
 			}
@@ -360,7 +379,15 @@ func (r *Reconciler) applyChanges(ctx context.Context, in RunInput, svc domain.S
 		}
 	}
 	if need.ports {
-		if err := r.backend.SetPorts(ctx, svc.Ref, svc.Ports); err != nil {
+		// Exposure follows the routing mode — the SAME rule the plan's
+		// changePorts runs (and backend Apply's applyPorts enforces):
+		// proxy declares mappings; none/internal converge to cleared.
+		// (Interim seam parity until convergence delegates to Apply.)
+		ports := svc.Ports
+		if svc.Routing.Mode != domain.RoutingProxy {
+			ports = nil
+		}
+		if err := r.backend.SetPorts(ctx, svc.Ref, ports); err != nil {
 			return need, fmt.Errorf("set ports: %w", err)
 		}
 	}

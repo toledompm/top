@@ -44,7 +44,7 @@ func baseService() domain.Service {
 		Routing:       domain.Routing{Mode: domain.RoutingProxy, Domains: []string{"metrics.example.com"}},
 		Storage:       []domain.Storage{{Name: "data", MountPath: "/prometheus", Size: "2Gi"}},
 		Env:           map[string]string{"TZ": "UTC", "LOG_LEVEL": "info"},
-		SecretRefs:    []string{"SMTP_PASSWORD"},
+		SecretRefs:    []string{"smtp-password"},
 		RestartPolicy: domain.RestartAlways,
 		Resources:     domain.Resources{Limits: domain.ResourceLimits{CPU: "500m", Memory: "512Mi"}},
 	}
@@ -115,7 +115,7 @@ func TestComputeAbsentIsCreate(t *testing.T) {
 	for _, want := range []string{
 		"revision",
 		"env.TZ", "env.LOG_LEVEL",
-		"secretRefs.SMTP_PASSWORD",
+		"secretRefs.smtp-password",
 		"ports.http",
 		"domains.metrics.example.com",
 		"storage.data:/prometheus",
@@ -193,17 +193,17 @@ func TestComputeDriftTable(t *testing.T) {
 		},
 		{
 			name: "secret ref added",
-			mut:  func(d *domain.Service) { d.SecretRefs = append(d.SecretRefs, "API_TOKEN") },
+			mut:  func(d *domain.Service) { d.SecretRefs = append(d.SecretRefs, "api-token") },
 			obs:  func(o *domain.ObservedState) { o.EnvKeys = []string{"API_TOKEN_X", "LOG_LEVEL", "SMTP_PASSWORD", "TZ"} },
 			paths: []string{
-				"secretRefs.API_TOKEN",
+				"secretRefs.api-token",
 			},
 		},
 		{
 			name: "secret ref unresolvable on host",
-			obs:  func(o *domain.ObservedState) { o.SecretChecksums["SMTP_PASSWORD"] = "" },
+			obs:  func(o *domain.ObservedState) { o.SecretChecksums["smtp-password"] = "" },
 			paths: []string{
-				"secretRefs.SMTP_PASSWORD",
+				"secretRefs.smtp-password",
 			},
 		},
 		{
@@ -272,9 +272,13 @@ func TestComputeDriftTable(t *testing.T) {
 			paths: []string{"resources.memory"},
 		},
 		{
-			name:  "internal routing wants network attachment",
+			// Switching proxy→internal: domain removal, network
+			// attachment, and — since exposure follows the mode — the
+			// observed host mapping the app carried as a proxy app is
+			// now excess (ports are declared but not exposure).
+			name:  "internal routing wants network attachment and clears exposure",
 			mut:   func(d *domain.Service) { d.Routing = domain.Routing{Mode: domain.RoutingInternal} },
-			paths: []string{"domains.metrics.example.com", "networks." + internalNetwork},
+			paths: []string{"domains.metrics.example.com", "networks." + internalNetwork, "ports.http"},
 		},
 		{
 			name:  "extra observed network",
@@ -451,7 +455,7 @@ func TestOrphanedReportingAndPrune(t *testing.T) {
 func TestSecretEntriesNeverCarryValues(t *testing.T) {
 	d := baseService()
 	o := obsFor(d)
-	o.SecretChecksums["SMTP_PASSWORD"] = "" // force a modify (name-only) entry
+	o.SecretChecksums["smtp-password"] = "" // force a modify (name-only) entry
 	sp := Compute(d, o)
 	for _, c := range sp.Changes {
 		if c.SecretRef && (c.From != nil || c.To != nil) {
@@ -506,4 +510,55 @@ func TestPlanRenders(t *testing.T) {
 		t.Fatal("rendered plan empty")
 	}
 	_ = sp
+}
+
+// ---- ports: exposure follows the routing mode ------------------------------
+
+// TestComputeInternalModeExposureIsEmpty pins the media-server 2026-11-14
+// fix: an internal-mode service DECLARES ports (the healthcheck's port
+// references must match them) but they are NOT host exposure — desired
+// exposure is empty. A converged internal host therefore reports no
+// mappings, and an internal app still carrying the mapping the old seam
+// set plans its REMOVAL, never a re-add.
+func TestComputeInternalModeExposureIsEmpty(t *testing.T) {
+	d := baseService()
+	d.Routing = domain.Routing{Mode: domain.RoutingInternal}
+	obs := obsFor(d)
+	if len(obs.Ports) != 0 {
+		t.Fatalf("synthesizer reported ports for internal mode: %v", obs.Ports)
+	}
+	if p := Compute(d, obs); !p.Empty() {
+		t.Fatalf("converged internal-mode state must plan empty, got:\n%s", p)
+	}
+
+	// The live-host shape the old seam produced: the dokku mapping still
+	// present under mode internal. Removal only.
+	obs.Ports = []domain.Port{{Name: "http", ContainerPort: 9090, HostPort: 9090}}
+	sp := Compute(d, obs)
+	var portChanges []domain.FieldChange
+	for _, c := range sp.Changes {
+		if c.Path == "ports.http" {
+			portChanges = append(portChanges, c)
+		}
+	}
+	if len(portChanges) != 1 {
+		t.Fatalf("want exactly one ports.http removal, got %v", sp.Changes)
+	}
+	if portChanges[0].From == nil || portChanges[0].To != nil {
+		t.Fatalf("want a removal (From set, To absent), got %+v", portChanges[0])
+	}
+}
+
+// TestComputeObservedDefaultHostPortIsUnpinned pins the phantom-diff fix:
+// the backend reports a default mapping as host==container
+// (http:9100:9100); the spec's unpinned (0) HostPort MEANS that state.
+// Literal HostPort comparison reprinted a ports.http modify entry on
+// every reconcile without any dokku mutation ever being needed.
+func TestComputeObservedDefaultHostPortIsUnpinned(t *testing.T) {
+	d := baseService() // proxy mode, unpinned 9090
+	obs := obsFor(d)
+	obs.Ports = []domain.Port{{Name: "http", ContainerPort: 9090, HostPort: 9090}}
+	if p := Compute(d, obs); !p.Empty() {
+		t.Fatalf("observed host==container default must converge, got:\n%s", p)
+	}
 }

@@ -312,12 +312,19 @@ func changeSecretRefs(d domain.Service, o domain.ObservedState) []domain.FieldCh
 	for _, ref := range names {
 		path := "secretRefs." + ref
 		// The OBSERVED config carries the mapped env var key (the
-		// T-403 dash-kebab rule the apply runs by: internal/reconcile's
-		// SecretEnvKey — dashes → underscores, uppercased), never the
-		// ref name (tier-4 verified 2026-11-03: grafana's applied
-		// GF_SECURITY_ADMIN_PASSWORD read as an eternal "+secret-rel
-		// (secret ref)" drift row while the plan keyed on the raw ref).
-		envKey := strings.ToUpper(strings.ReplaceAll(ref, "-", "_"))
+		// T-403 dash-kebab rule every env-writing path runs by:
+		// domain.SecretEnvKey — dashes → underscores, uppercased),
+		// never the ref name (tier-4 verified 2026-11-03: grafana's
+		// applied GF_SECURITY_ADMIN_PASSWORD read as an eternal
+		// "+secret-ref (secret ref)" drift row while the plan keyed
+		// on the raw ref).
+		envKey, keyErr := domain.SecretEnvKey(ref)
+		if keyErr != nil {
+			// Unreachable for validated specs (names are service-name
+			// syntax, so no underscore); a defensive skip keeps the
+			// planner total if validation ever loosens.
+			continue
+		}
 		switch {
 		case !envHasKey(o, envKey):
 			cs = append(cs, secretChange(path, "+"))
@@ -352,6 +359,20 @@ func portValue(p domain.Port) string {
 	return v
 }
 
+// effectiveHost resolves a port's host side the way the backend applies
+// it: an unpinned (0) HostPort means host == container (applyPorts). The
+// observed host==container default is therefore the SAME state as
+// unpinned — comparing it literally produced a phantom per-run diff on
+// every default-port app (media-server 2026-11-14: node-exporter,
+// grafana, cadvisor, prometheus each reprinted their ports.http line on
+// every reconcile without any dokku mutation).
+func effectiveHost(p domain.Port) int {
+	if p.HostPort != 0 {
+		return p.HostPort
+	}
+	return p.ContainerPort
+}
+
 // portPath is the change path for one port: "ports.<name>" for named
 // ports, "ports.<number>" for unnamed ones.
 func portPath(p domain.Port) string {
@@ -374,6 +395,18 @@ func portPath(p domain.Port) string {
 func changePorts(d domain.Service, o domain.ObservedState) []domain.FieldChange {
 	var cs []domain.FieldChange
 
+	// Desired EXPOSURE follows the routing mode (the backend contract's
+	// applyPorts rule): proxy DECLARES mappings; none/internal declare
+	// none — spec.ports stay declared (the healthcheck's port references
+	// must match them) but they are not host exposure. Comparing the
+	// declared ports literally made internal-mode services converge to
+	// host mappings they must never have (media-server 2026-11-14:
+	// nginx listeners on contested ports blocked every reload).
+	desired := d.Ports
+	if d.Routing.Mode != domain.RoutingProxy {
+		desired = nil
+	}
+
 	obs := make([]obsPort, 0, len(o.Ports))
 	for _, op := range o.Ports {
 		obs = append(obs, obsPort{p: op})
@@ -385,7 +418,7 @@ func changePorts(d domain.Service, o domain.ObservedState) []domain.FieldChange 
 		}
 	}
 
-	for _, dp := range d.Ports {
+	for _, dp := range desired {
 		path, dv := portPath(dp), portValue(dp)
 		// Match by port name first; fall back to matching an unnamed
 		// observed port by containerPort so the plan shows the real
@@ -406,7 +439,7 @@ func changePorts(d domain.Service, o domain.ObservedState) []domain.FieldChange 
 		switch {
 		case op == nil:
 			cs = append(cs, fieldChange(path, "", dv))
-		case op.p.ContainerPort != dp.ContainerPort || op.p.HostPort != dp.HostPort:
+		case op.p.ContainerPort != dp.ContainerPort || effectiveHost(op.p) != effectiveHost(dp):
 			cs = append(cs, fieldChange(path, portValue(op.p), dv))
 			op.taken = true
 		default:

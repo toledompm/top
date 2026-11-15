@@ -102,7 +102,8 @@ func TestAdoptSelfNoRedeployWhenSpecMatches(t *testing.T) {
 		a.image = img
 		a.env["TZ"] = "UTC"
 		a.networks = []string{"top-internal"}
-		a.ports = []domain.Port{{Name: "http", ContainerPort: 8443}}
+		// No ports: internal-mode exposure is none (the converged shape;
+		// the spec's declared 8443 is for the healthcheck reference only).
 	})
 	svc := selfSpec("", nil)
 
@@ -206,7 +207,6 @@ func TestAdoptSelfFieldDriftConverges(t *testing.T) {
 		a.image = img
 		a.env["TZ"] = "UTC"
 		a.networks = []string{"top-internal"}
-		a.ports = []domain.Port{{Name: "http", ContainerPort: 8443}}
 	})
 	svc := selfSpec("", map[string]string{"LOG_LEVEL": "info"})
 

@@ -42,7 +42,10 @@ func recConvergedReports(f *exectest.FakeRunner) {
 	setPrefix([]string{"apps:report"}, `{"deploy-source":"docker-image","deploy-source-metadata":"ghcr.io/example/web:1.2.3"}`)
 	setPrefix([]string{"network:report"}, `{"computed-attach-post-deploy":"top-internal"}`)
 	setPrefix([]string{"resource:report"}, `{}`)
-	setPrefix([]string{"ports:report"}, `[{"scheme":"http","host_port":0,"container_port":8080}]`)
+	// tops/web is mode internal ⇒ converged exposure is EMPTY (the
+	// changePorts/applyPorts rule); a static mapping here would read as
+	// eternal removal drift after the reconcile's ports:clear.
+	setPrefix([]string{"ports:report"}, `[]`)
 	setPrefix([]string{"storage:list"}, `[]`)
 	setPrefix([]string{"config:keys"}, "TZ\n")
 	// Everything the appliers run (apps:create, git:from-image,

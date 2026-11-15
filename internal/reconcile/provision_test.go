@@ -4,14 +4,14 @@ package reconcile
 
 // Tier-1 hermetic tests for the T-403 provisioning sync (provision.go):
 // tree convergence against real fs temp dirs (the sync IS filesystem
-// work — no runner seam), the dash-kebab secret→env rule (secretenv.go),
-// and the run-level no-op guarantees (empty/un-set ProvisionSrc).
+// work — no runner seam) and the run-level no-op guarantees (empty/un-set
+// ProvisionSrc). The dash-kebab secret→env rule's test lives next to the
+// function now (internal/domain/secretenv_test.go).
 
 import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/toledompm/top/internal/domain"
@@ -193,22 +193,5 @@ func TestProvisioningSyncSkipsFileTreeLeaf(t *testing.T) {
 	}
 }
 
-func TestSecretEnvKeyDashKebabRule(t *testing.T) {
-	t.Parallel()
-	for name, want := range map[string]string{
-		"gf-security-admin-password": "GF_SECURITY_ADMIN_PASSWORD",
-		"smtp-password":              "SMTP_PASSWORD",
-		"api-token":                  "API_TOKEN",
-		"x":                          "X",
-	} {
-		got, err := SecretEnvKey(name)
-		if err != nil || got != want {
-			t.Errorf("SecretEnvKey(%q) = %q,%v want %q,nil", name, got, err, want)
-		}
-	}
-	if _, err := SecretEnvKey("has_underscore"); err == nil {
-		t.Error("underscore in name must fail (names are [a-z0-9-], ADR-0008; use dash-kebab of the env var)")
-	} else if !strings.Contains(err.Error(), "dash-kebab") {
-		t.Errorf("error text should carry the fix hint, got: %v", err)
-	}
-}
+// (TestSecretEnvKeyDashKebabRule moved to internal/domain with the
+// function itself — one rule, one home, tested next to domain.SecretEnvKey.)

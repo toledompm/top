@@ -40,13 +40,25 @@ func SynthesizeObserved(d domain.Service) domain.ObservedState {
 		o.Revision = d.Source.Build.Ref
 	}
 	o.EnvKeys = append(o.EnvKeys, sortedKeys(d.Env)...)
-	o.EnvKeys = append(o.EnvKeys, d.SecretRefs...) // injected names; values never
+	// A converged host reports the secretRef's MAPPED env key (the
+	// T-403 dash-kebab rule, domain.SecretEnvKey) in its config, never
+	// the ref name — mirror that exactly (validated specs cannot carry
+	// underscore names, so the skip below is unreachable for real input).
+	for _, ref := range d.SecretRefs {
+		if key, err := domain.SecretEnvKey(ref); err == nil {
+			o.EnvKeys = append(o.EnvKeys, key)
+		}
+	}
 	sort.Strings(o.EnvKeys)
 	for _, ref := range d.SecretRefs {
 		o.SecretChecksums[ref] = "sha256:example-checksum-" + ref
 	}
-	o.Ports = append(o.Ports, d.Ports...)
+	// Ports are host exposure: only proxy mode declares mappings (the
+	// changePorts/applyPorts rule). none/internal converge to none — a
+	// converged internal-mode host reports no port mappings even though
+	// the spec declares ports for its healthcheck references.
 	if d.Routing.Mode == domain.RoutingProxy {
+		o.Ports = append(o.Ports, d.Ports...)
 		o.Domains = append([]string(nil), d.Routing.Domains...)
 	}
 	if d.Routing.Mode == domain.RoutingInternal {
