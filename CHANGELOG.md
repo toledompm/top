@@ -8,6 +8,34 @@ follow [SemVer](https://semver.org) (tags: `v0.X.Y`).
 
 ## [Unreleased]
 
+### Fixed
+- Port exposure follows `routing.mode` (`internal/plan`): internal-mode
+  services no longer converge to host nginx listeners (media-server
+  2026-11-14: listeners on contested host ports 8080/9090 made every
+  nginx config reload abort, so nothing spec-driven went live). An
+  unpinned `hostPort` now compares equal to dokku's host==container
+  default, ending the phantom per-run port diff on every default-port
+  app. `ledgerApp` records EVERY spec service (converged apps included)
+  — the ledger row is the prune gate's ownership key.
+- Failed deploys carry a stdout excerpt in the error: under
+  sudo/non-TTY dokku writes failure text to stdout, which the exec
+  layer's stderr-only excerpt dropped — a bad image tag surfaced as a
+  bare `exit 1` instead of "manifest unknown".
+
+### Changed
+- Reconcile convergence delegates to `backend.Apply` — the platform-
+  backend contract's single converge primitive. The reconcile seam's
+  parallel per-field setters are gone; the forks had already diverged
+  (internal-mode ports shipped host mappings; Apply's checks-fingerprint
+  archive deploys, resource-limit convergence, and `git:sync` build
+  deploys never ran under reconcile). Storage stays reconciler-side
+  (ADR-0009 host-dir lifecycle) via the explicit
+  `ApplyOptions.SkipStorage` split. Secret env keys key on the shared
+  `domain.SecretEnvKey` dash-kebab rule. Testing policy: ADR-0012
+  amendment A1 bans fakes of TOP's own contracts — hermetic tiers run
+  the real adapter over the scripted exec runner and the real SQLite
+  store (existing per-package test backends scheduled for replacement).
+
 ## [v0.1.1] — 2026-11-14 (live-homelab fixes)
 ### Fixed
 - Install phase 0's repo probe rides the deploy-key transport (bare ssh
